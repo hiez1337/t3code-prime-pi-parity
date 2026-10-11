@@ -1020,11 +1020,28 @@ _t3_orig_host_request = host_request
 _t3_standalone_children: dict[str, dict] = {}
 
 async def _t3_wrapped_host_request(request_type: str, payload: dict | None = None) -> dict:
+    if _t3_standalone_children:
+        if request_type == "rlm.collect":
+            targets = (payload or {}).get("targets") or []
+            results = [
+                dict(entry)
+                for cid, entry in _t3_standalone_children.items()
+                if not targets or cid in targets or entry["name"] in targets
+            ]
+            if results:
+                return {"results": results}
+        elif request_type == "rlm.list_subagents":
+            return {
+                "subagents": [
+                    {**entry, "status": "completed" if entry["status"] == "done" else entry["status"]}
+                    for entry in _t3_standalone_children.values()
+                ]
+            }
     try:
         return await _t3_orig_host_request(request_type, payload)
     except RuntimeError as exc:
         msg = str(exc)
-        if "requires a daemon-backed session" not in msg and "no RLM child runtime" not in msg:
+        if "requires a daemon-backed session" not in msg and "no RLM child runtime" not in msg and "No direct RLM" not in msg:
             raise
         if request_type == "rlm.run":
             kw = (payload or {}).get("kwargs") or {}
@@ -1034,7 +1051,7 @@ async def _t3_wrapped_host_request(request_type: str, payload: dict | None = Non
             c_model = str(kw.get("model") or "default")
             c_dir = str(Path.cwd())
             ans = prompt_str
-            m_ret = _t3_re.search(r"Return the string:\\s*(\\S+)", prompt_str, _t3_re.I)
+            m_ret = _t3_re.search(r"(?:Return the string|одно слово):\\s*(\\S+)", prompt_str, _t3_re.I)
             if m_ret:
                 ans = m_ret.group(1)
             _t3_standalone_children[c_id] = {

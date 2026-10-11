@@ -514,7 +514,7 @@ function patchClientAssets(clientAssetsDir) {
 function patchPythonRlmFile(pyPath) {
   if (!fs.existsSync(pyPath)) return false;
   let py = fs.readFileSync(pyPath, 'utf8');
-  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('_t3_wrapped_host_request')) return false;
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('if _t3_standalone_children:')) return false;
   if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) {
     py = py.slice(0, py.indexOf('# __T3_PRIME_HTML_BRIDGE__')).trimEnd();
   }
