@@ -170,6 +170,44 @@ test('unpackPrimeIpythonCell unpacks diffs, attachments, edit/read/bash/html_ren
   const htmlItem = unpacked.find((i) => i.kind === 'html_render');
   assert.match(htmlItem.htmlRender.attachmentId, /-html$/);
   assert.equal(htmlItem.title, 'Dashboard');
+
+  // Verify keyword-argument read(), variable-argument html_render with JSON marker, goal.create, and rlm.spawn unpacking
+  const unpackedE2e = sandbox.unpackPrimeIpythonCell(
+    'cell-2',
+    'thread-123',
+    {
+      code: [
+        'read("README.md", limit=10)',
+        'html_card = """<div><h2>Prime Agent Live Status</h2></div>"""',
+        'rlm.html_render(html_card, title="Prime Agent Telemetry", height=320)',
+        'await goal.create("1. Проверка RPC\\n2. Проверка субагента")',
+        'h = await rlm.spawn("Return the string: SUBAGENT_OK", name="probe-worker")',
+        'await goal.complete("E2E passed")',
+      ].join('\n'),
+    },
+    {},
+    '__T3_HTML_RENDER_JSON__:{"html":"<div><h2>Prime Agent Live Status</h2></div>","title":"Prime Agent Telemetry","height":320}\nSubagent result: SUBAGENT_OK',
+    null
+  );
+  const readCard = unpackedE2e.find((i) => i.kind === 'read');
+  assert.ok(readCard, 'unpacks read("README.md", limit=10) with keyword argument');
+  assert.equal(readCard.input.path, 'README.md');
+  assert.equal(readCard.input.limit, 10);
+
+  const htmlCardItem = unpackedE2e.find((i) => i.kind === 'html_render');
+  assert.ok(htmlCardItem, 'unpacks variable-argument html_render via __T3_HTML_RENDER_JSON__');
+  assert.equal(htmlCardItem.title, 'Prime Agent Telemetry');
+  assert.equal(htmlCardItem.htmlRender.height, 320);
+  assert.match(htmlCardItem.input.html, /Prime Agent Live Status/);
+
+  const goalItem = unpackedE2e.find((i) => i.kind === 'goal');
+  assert.ok(goalItem, 'unpacks goal.create / goal.complete into goal item');
+  assert.equal(goalItem.steps.length, 2);
+  assert.equal(goalItem.allDone, true);
+
+  const subItem = unpackedE2e.find((i) => i.kind === 'subagent');
+  assert.ok(subItem, 'unpacks rlm.spawn into subagent item');
+  assert.equal(subItem.agent, 'probe-worker');
 });
 
 test('primeGoalToTodoSteps maps Prime Agent goal_update / _meta.goal to T3 todo steps', () => {
@@ -188,13 +226,17 @@ console.log('\n2. Testing Patched Bundle & Idempotency...');
 
 test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-compliant events, and is 100% idempotent', () => {
   let content = fs.readFileSync(inspectBinCli, 'utf8');
-  if (!content.includes('turn.lastLiveUsedTokens = afterTokenCount;')) {
+  if (!content.includes('rawCompErr === void 0') || !content.includes('child.kind === "goal"') || !content.includes('rawGoal.goal && typeof rawGoal.goal')) {
     const patched = patchBinCliContent(content);
     content = patched.content;
     fs.writeFileSync(inspectBinCli, content, 'utf8');
   }
   assert.ok(content.includes(BRIDGE_MARKER), 'bridge marker present');
   assert.ok(content.includes('turn.toolNames = turn.toolNames ?? new Map()'), 'emitToolItem replacement active in binCli');
+  assert.ok(content.includes('child.kind === "goal"'), 'emitToolItem unpacks goal items into plan.updated and todo_list');
+  assert.ok(content.includes('child.kind === "subagent"'), 'emitToolItem unpacks subagent items into emitSubagentTasks');
+  assert.ok(content.includes('rawCompErr === void 0'), 'compaction_end handles short-session no-op compaction cleanly');
+  assert.ok(content.includes('too short to compact'), 'compact response handles short-session message without failing turn');
   assert.ok(content.includes('supportsSkillInvocation: true'), 'PiProviderCapabilitiesV2.supportsSkillInvocation enabled');
   assert.ok(content.includes('emitsTodoList: true'), 'PiProviderCapabilitiesV2.planning.emitsTodoList enabled');
   assert.ok(content.includes('emitsProposedPlan: true'), 'PiProviderCapabilitiesV2.planning.emitsProposedPlan enabled');
@@ -311,7 +353,7 @@ test('Client assets & ~/.t3/userdata/settings.json are patched for Prime Agent',
 
 console.log('\n3. Testing Live Python RLM Kernel & Prime Agent RPC Subprocess...');
 
-test('Python kernel-venv rlm.html_render and rlm.html_preview execute via both module and _RLMNamespace', () => {
+test('Python kernel-venv rlm.html_render, read(), PRIME_AGENT_BASH_SHELL, and subagents module execute cleanly', () => {
   if (!fs.existsSync(kernelPython)) {
     console.log('    (Skipping Python execution: kernel-venv not installed on this host)');
     return;
@@ -320,11 +362,13 @@ test('Python kernel-venv rlm.html_render and rlm.html_preview execute via both m
     kernelPython,
     [
       '-c',
-      'import json, rlm as rlm_mod; from rlm import rlm as rlm_ns; p1 = rlm_mod.html_render("<h1>Hello T3</h1>", title="Live RLM", height=360); p2 = rlm_ns.html_preview("<h2>Sub</h2>", title="Preview", height=240); print(json.dumps([p1, p2]))',
+      'import os, json, rlm as rlm_mod; from rlm import rlm as rlm_ns; from subagents import collect; p1 = rlm_mod.html_render("<h1>Hello T3</h1>", title="Live RLM", height=360); p2 = rlm_ns.html_preview("<h2>Sub</h2>", title="Preview", height=240); r_txt = read("README.md", limit=2); print(json.dumps([p1, p2, bool(os.environ.get("PRIME_AGENT_BASH_SHELL")), callable(collect), "1:" in r_txt]))',
     ],
     { encoding: 'utf8' }
   );
-  const [parsed, preview] = JSON.parse(out.trim());
+  const lines = out.trim().split(/\r?\n/);
+  assert.ok(lines[0].startsWith('__T3_HTML_RENDER_JSON__:'), 'html_render prints __T3_HTML_RENDER_JSON__ marker');
+  const [parsed, preview, hasBashEnv, hasCollect, hasReadLines] = JSON.parse(lines[lines.length - 1]);
   assert.equal(parsed.mimeType, 'application/vnd.prime-agent.html-render+json');
   assert.equal(parsed.title, 'Live RLM');
   assert.equal(parsed.height, 360);
@@ -332,6 +376,9 @@ test('Python kernel-venv rlm.html_render and rlm.html_preview execute via both m
   assert.equal(parsed.data.html, '<h1>Hello T3</h1>');
   assert.equal(preview.title, 'Preview');
   assert.equal(preview.height, 240);
+  assert.equal(hasBashEnv, true, 'PRIME_AGENT_BASH_SHELL auto-configured on Windows');
+  assert.equal(hasCollect, true, 'from subagents import collect is callable');
+  assert.equal(hasReadLines, true, 'built-in read(path, limit=2) returns numbered lines');
 });
 
 await (async () => {

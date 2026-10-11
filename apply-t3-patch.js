@@ -92,11 +92,18 @@ function replaceFunctionBlock(content, prefix, newBlock) {
 function patchBinCliContent(content) {
   let changes = 0;
 
-  // 1. Inject self-contained bridge helper block once before resolveSpawnCommand (early in bundle)
+  // 1. Inject or upgrade self-contained bridge helper block before resolveSpawnCommand (early in bundle)
+  const anchor = 'const resolveSpawnCommand = fnUntraced(';
   if (!content.includes(BRIDGE_MARKER)) {
-    const anchor = 'const resolveSpawnCommand = fnUntraced(';
     if (content.includes(anchor)) {
       content = content.replace(anchor, `${BIN_CLI_BRIDGE_SOURCE}\n${anchor}`);
+      changes++;
+    }
+  } else if (content.includes(anchor) && (!content.includes('__T3_HTML_RENDER_JSON__:') || !content.includes('rawGoal.goal && typeof rawGoal.goal'))) {
+    const startIdx = content.indexOf(BRIDGE_MARKER);
+    const endIdx = content.indexOf(anchor, startIdx);
+    if (startIdx !== -1 && endIdx !== -1) {
+      content = content.slice(0, startIdx) + `${BIN_CLI_BRIDGE_SOURCE}\n` + content.slice(endIdx);
       changes++;
     }
   }
@@ -191,7 +198,7 @@ function patchBinCliContent(content) {
   }
 
   // 6. Replace emitToolItem and emitSubagentTasks
-  if (!content.includes('turn.toolNames = turn.toolNames ?? new Map()')) {
+  if (!content.includes('turn.toolNames = turn.toolNames ?? new Map()') || !content.includes('child.kind === "goal"')) {
     const resTool = replaceFunctionBlock(content, 'const emitToolItem = fnUntraced(', EMIT_TOOL_ITEM_SOURCE);
     if (resTool.replaced) {
       content = resTool.content;
@@ -403,6 +410,33 @@ function patchBinCliContent(content) {
   }
 
   // 18. Patch compaction_end in PiAdapterV2 to broadcast updated token count and force settle
+  const oldPiCompNull = 'const errorMessage = piRecordString(event, "errorMessage") ?? "Pi context compaction failed.";\n\t\t\t\t\t\t\tyield* emitCompaction(turn, compaction, "failed", { summary: errorMessage.slice(0, 1e3) });\n\t\t\t\t\t\t\tif (turn.settleWhenIdle || !turn.sawAgentActivity) yield* scheduleSettleProbe(turn, turn.settleWhenIdle);\n\t\t\t\t\t\t\treturn;';
+  const newPiCompNull = `const rawCompErr = piRecordString(event, "errorMessage");
+\t\t\t\t\t\t\tif (rawCompErr === void 0) {
+\t\t\t\t\t\t\t\tyield* emitCompaction(turn, compaction, "completed", { summary: "Context is already compact (session is below compaction threshold)." });
+\t\t\t\t\t\t\t\tyield* scheduleSettleProbe(turn, true);
+\t\t\t\t\t\t\t\treturn;
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\tyield* emitCompaction(turn, compaction, "failed", { summary: rawCompErr.slice(0, 1e3) });
+\t\t\t\t\t\t\tyield* scheduleSettleProbe(turn, true);
+\t\t\t\t\t\t\treturn;`;
+  if (content.includes(oldPiCompNull) && !content.includes('rawCompErr === void 0')) {
+    content = content.replace(oldPiCompNull, newPiCompNull);
+    changes++;
+  }
+
+  const oldPiCompResp = 'if (event["success"] !== false) return;\n\t\t\t\t\t\t\tif (compactTurn === null) return;';
+  const newPiCompResp = `if (event["success"] !== false) return;
+\t\t\t\t\t\t\tif (compactTurn === null) return;
+\t\t\t\t\t\t\tif (/too short to compact/i.test(piRecordString(event, "error") ?? "")) {
+\t\t\t\t\t\t\t\tyield* scheduleSettleProbe(compactTurn, true);
+\t\t\t\t\t\t\t\treturn;
+\t\t\t\t\t\t\t}`;
+  if (content.includes(oldPiCompResp) && !content.includes('too short to compact')) {
+    content = content.replace(oldPiCompResp, newPiCompResp);
+    changes++;
+  }
+
   const oldPiCompEnd = 'yield* emitCompaction(turn, compaction, "completed", {\n\t\t\t\t\t\t\t...summary === void 0 ? {} : { summary },\n\t\t\t\t\t\t\t...beforeTokenCount === void 0 ? {} : { beforeTokenCount },\n\t\t\t\t\t\t\t...afterTokenCount === void 0 ? {} : { afterTokenCount }\n\t\t\t\t\t\t});\n\t\t\t\t\t\tif (turn.settleWhenIdle || !turn.sawAgentActivity) yield* scheduleSettleProbe(turn, turn.settleWhenIdle);';
   const newPiCompEnd = `yield* emitCompaction(turn, compaction, "completed", {
 \t\t\t\t\t\t\t...summary === void 0 ? {} : { summary },
@@ -468,7 +502,7 @@ function patchClientAssets(clientAssetsDir) {
 function patchPythonRlmFile(pyPath) {
   if (!fs.existsSync(pyPath)) return false;
   let py = fs.readFileSync(pyPath, 'utf8');
-  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('setattr(_RLMNamespace, "html_render"')) return false;
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('_t3_wrapped_host_request')) return false;
   if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) {
     py = py.slice(0, py.indexOf('# __T3_PRIME_HTML_BRIDGE__')).trimEnd();
   }

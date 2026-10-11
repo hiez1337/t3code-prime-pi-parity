@@ -160,10 +160,12 @@ function formatPiReadCard(args) {
 \t\tinput: { ...(args && typeof args === "object" ? args : {}), ...(readPath ? { path: readPath } : {}) }
 \t};
 }
-function primeGoalToTodoSteps(goal) {
-\tif (!goal || typeof goal !== "object") return { steps: [], explanation: void 0 };
+function primeGoalToTodoSteps(rawGoal) {
+\tif (!rawGoal || typeof rawGoal !== "object") return { steps: [], explanation: void 0 };
+\tconst goal = rawGoal.goal && typeof rawGoal.goal === "object" ? rawGoal.goal : rawGoal;
 \tconst objective = String(goal.objective ?? goal.title ?? "").trim();
 \tconst statusRaw = String(goal.status ?? (goal.active ? "active" : "completed")).trim().toLowerCase();
+\tconst stepStatus = statusRaw === "completed" || statusRaw === "complete" || statusRaw === "achieved" || statusRaw === "done" ? "completed" : statusRaw === "pending" ? "pending" : "running";
 \tconst steps = [];
 \tif (Array.isArray(goal.steps)) {
 \t\tfor (const [idx, s] of goal.steps.entries()) {
@@ -176,11 +178,22 @@ function primeGoalToTodoSteps(goal) {
 \t\t}
 \t}
 \tif (steps.length === 0 && objective.length > 0) {
-\t\tsteps.push({
-\t\t\tid: "goal-objective-1",
-\t\t\ttext: objective,
-\t\t\tstatus: statusRaw === "completed" || statusRaw === "achieved" || statusRaw === "done" ? "completed" : statusRaw === "pending" ? "pending" : "running"
-\t\t});
+\t\tconst lines = objective.split(/\\r?\\n/).map((l) => l.replace(/^\\s*(?:\\d+[\\.\\)]\\s*|[-*]\\s*)/, "").trim()).filter(Boolean);
+\t\tif (lines.length > 1) {
+\t\t\tfor (const [idx, line] of lines.entries()) {
+\t\t\t\tsteps.push({
+\t\t\t\t\tid: \`goal-objective-\${idx + 1}\`,
+\t\t\t\t\ttext: line,
+\t\t\t\t\tstatus: stepStatus
+\t\t\t\t});
+\t\t\t}
+\t\t} else {
+\t\t\tsteps.push({
+\t\t\t\tid: "goal-objective-1",
+\t\t\t\ttext: objective,
+\t\t\t\tstatus: stepStatus
+\t\t\t});
+\t\t}
 \t}
 \tconst budget = typeof goal.tokenBudget === "number" ? \`Budget: \${goal.tokensUsed ?? 0}/\${goal.tokenBudget} tokens\` : void 0;
 \treturn { steps, explanation: budget };
@@ -288,11 +301,14 @@ function unpackPrimeIpythonCell(toolCallId, threadId, args, resultRecord, output
 \t\t\t\tchanges: [{ operation: "edit", path: p }]
 \t\t\t});
 \t\t}
-\t\tconst readRe = /\\bread\\s*\\(\\s*(['"\`])([^'"\`]+)\\1(?:\\s*,\\s*(\\d+))?(?:\\s*,\\s*(\\d+))?\\s*\\)/g;
+\t\tconst readRe = /\\bread\\s*\\(\\s*(?:path\\s*=\\s*)?(['"\`])([^'"\`]+)\\1([^)]*)\\)/g;
 \t\tlet rIdx = 0;
 \t\twhile ((m = readRe.exec(code)) !== null) {
 \t\t\trIdx += 1;
-\t\t\tconst card = formatPiReadCard({ path: m[2], ...(m[3] ? { offset: Number(m[3]) } : {}), ...(m[4] ? { limit: Number(m[4]) } : {}) });
+\t\t\tconst tail = m[3] || "";
+\t\t\tconst offM = /(?:offset\\s*=\\s*|^\\s*,\\s*)(\\d+)/.exec(tail);
+\t\t\tconst limM = /(?:limit\\s*=\\s*|,\\s*\\d+\\s*,\\s*)(\\d+)/.exec(tail);
+\t\t\tconst card = formatPiReadCard({ path: m[2], ...(offM ? { offset: Number(offM[1]) } : {}), ...(limM ? { limit: Number(limM[1]) } : {}) });
 \t\t\titems.push({
 \t\t\t\tnativeItemId: \`\${toolCallId}:code-read:\${rIdx}\`,
 \t\t\t\tkind: "read",
@@ -301,14 +317,15 @@ function unpackPrimeIpythonCell(toolCallId, threadId, args, resultRecord, output
 \t\t\t\toutput: outputText
 \t\t\t});
 \t\t}
-\t\tconst bashRe = /\\bbash\\s*\\(\\s*(['"\`])([\\s\\S]*?)\\1/g;
+\t\tconst bashRe = /\\bbash\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)/g;
 \t\tlet bIdx = 0;
 \t\twhile ((m = bashRe.exec(code)) !== null) {
 \t\t\tbIdx += 1;
+\t\t\tconst cmdStr = m[1] ?? m[2] ?? m[4] ?? "";
 \t\t\titems.push({
 \t\t\t\tnativeItemId: \`\${toolCallId}:code-bash:\${bIdx}\`,
 \t\t\t\tkind: "command_execution",
-\t\t\t\tinput: m[2],
+\t\t\t\tinput: cmdStr,
 \t\t\t\toutput: outputText
 \t\t\t});
 \t\t}
@@ -320,18 +337,65 @@ function unpackPrimeIpythonCell(toolCallId, threadId, args, resultRecord, output
 \t\t\t\toutput: outputText
 \t\t\t});
 \t\t}
-\t\tif (htmlCount === 0 && (/\\bhtml_(?:render|preview)\\s*\\(/.test(code) || /call_tool\\s*\\([^)]*html_(?:render|preview)/.test(code))) {
-\t\t\tconst htmlMatch = /(?:html_(?:render|preview)|call_tool)\\s*\\([\\s\\S]*?(['"\`])(<[\\s\\S]*?>)\\1/.exec(code);
-\t\t\tconst titleMatch = /title\\s*[:=]\\s*(['"\`])([^'"\`]+)\\1/.exec(code);
-\t\t\tconst htmlStr = htmlMatch ? htmlMatch[2] : "<div>HTML Preview</div>";
-\t\t\tconst titleStr = titleMatch ? titleMatch[2] : "HTML Preview";
-\t\t\tconst ref = ensurePrimeHtmlRenderAttachment(threadId, \`\${toolCallId}:code-html:1\`, htmlStr, titleStr, 480);
+\t\tif (htmlCount === 0 && (/\\bhtml_(?:render|preview)\\s*\\(/.test(code) || /call_tool\\s*\\([^)]*html_(?:render|preview)/.test(code) || outputText.includes("__T3_HTML_RENDER_JSON__:"))) {
+\t\t\tlet htmlStr = "<div>HTML Preview</div>";
+\t\t\tlet titleStr = "HTML Preview";
+\t\t\tlet heightNum = 480;
+\t\t\tconst jsonMarkerMatch = /__T3_HTML_RENDER_JSON__:(\\{[^\\r\\n]+\\})/.exec(outputText);
+\t\t\tif (jsonMarkerMatch) {
+\t\t\t\ttry {
+\t\t\t\t\tconst parsedHtml = JSON.parse(jsonMarkerMatch[1]);
+\t\t\t\t\tif (typeof parsedHtml.html === "string" && parsedHtml.html.length > 0) htmlStr = parsedHtml.html;
+\t\t\t\t\tif (typeof parsedHtml.title === "string" && parsedHtml.title.length > 0) titleStr = parsedHtml.title;
+\t\t\t\t\tif (typeof parsedHtml.height === "number" && parsedHtml.height > 0) heightNum = parsedHtml.height;
+\t\t\t\t} catch (_e) {}
+\t\t\t} else {
+\t\t\t\tconst tripleMatch = /"""(\\s*<(?!!--)[\\s\\S]*?>[\\s\\S]*?)"""|'''(\\s*<(?!!--)[\\s\\S]*?>[\\s\\S]*?)'''/.exec(code);
+\t\t\t\tconst inlineMatch = /(?:html_(?:render|preview)|call_tool)\\s*\\([\\s\\S]*?(['"\`])(<[\\s\\S]*?>)\\1/.exec(code);
+\t\t\t\tif (tripleMatch) htmlStr = (tripleMatch[1] ?? tripleMatch[2]).trim();
+\t\t\t\telse if (inlineMatch) htmlStr = inlineMatch[2];
+\t\t\t\tconst titleMatch = /(?:['"]title['"]\\s*:\\s*|\\btitle\\s*[:=]\\s*)(['"\`])([^'"\`]+)\\1/.exec(code) ?? /'title':\\s*'([^']+)'/.exec(outputText);
+\t\t\t\tif (titleMatch) titleStr = titleMatch[2] ?? titleMatch[1];
+\t\t\t\tconst heightMatch = /(?:['"]height['"]\\s*[:=]\\s*|\\bheight\\s*[:=]\\s*)(\\d+)/.exec(code) ?? /'height':\\s*(\\d+)/.exec(outputText);
+\t\t\t\tif (heightMatch) heightNum = Number(heightMatch[1]);
+\t\t\t}
+\t\t\tconst ref = ensurePrimeHtmlRenderAttachment(threadId, \`\${toolCallId}:code-html:1\`, htmlStr, titleStr, heightNum);
 \t\t\titems.push({
 \t\t\t\tnativeItemId: \`\${toolCallId}:code-html:1\`,
 \t\t\t\tkind: "html_render",
 \t\t\t\ttitle: ref.title,
 \t\t\t\thtmlRender: ref,
 \t\t\t\tinput: { html: htmlStr, title: ref.title, height: ref.height, uri: "xd://127.0.0.1/html_render" }
+\t\t\t});
+\t\t}
+\t\tif (/\\bgoal\\.(?:create|complete)\\s*\\(/.test(code) || /'goal':\\s*\\{/.test(outputText)) {
+\t\t\tconst objOutMatch = /'objective':\\s*'((?:\\\\'|[^'])*)'/.exec(outputText);
+\t\t\tconst objCodeMatch = /\\bgoal\\.create\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)/.exec(code);
+\t\t\tconst rawObj = (objOutMatch ? objOutMatch[1] : (objCodeMatch ? (objCodeMatch[1] ?? objCodeMatch[2] ?? objCodeMatch[4] ?? "") : "")).replace(/\\\\n/g, "\\n");
+\t\t\tconst isComplete = /\\bgoal\\.complete\\s*\\(/.test(code) || /'status':\\s*'complete/.test(outputText);
+\t\t\tif (rawObj.trim().length > 0) {
+\t\t\t\tconst goalTodo = primeGoalToTodoSteps({ goal: { objective: rawObj, status: isComplete ? "complete" : "active" } });
+\t\t\t\tif (goalTodo.steps.length > 0) {
+\t\t\t\t\titems.push({
+\t\t\t\t\t\tnativeItemId: \`\${toolCallId}:code-goal:1\`,
+\t\t\t\t\t\tkind: "goal",
+\t\t\t\t\t\tsteps: goalTodo.steps,
+\t\t\t\t\t\tallDone: isComplete,
+\t\t\t\t\t\texplanation: goalTodo.explanation
+\t\t\t\t\t});
+\t\t\t\t}
+\t\t\t}
+\t\t}
+\t\tconst spawnMatch = /\\brlm\\.spawn\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)(?:[\\s\\S]*?\\bname\\s*=\\s*(['"\`])([^'"\`]+)\\5)?/.exec(code);
+\t\tif (spawnMatch) {
+\t\t\tconst taskPrompt = spawnMatch[1] ?? spawnMatch[2] ?? spawnMatch[4] ?? "Subagent task";
+\t\t\tconst subName = spawnMatch[6] ?? "rlm-subagent";
+\t\t\titems.push({
+\t\t\t\tnativeItemId: \`\${toolCallId}:code-subagent:1\`,
+\t\t\t\tkind: "subagent",
+\t\t\t\tagent: subName,
+\t\t\t\ttask: taskPrompt,
+\t\t\t\toutput: outputText
 \t\t\t});
 \t\t}
 \t}
@@ -768,6 +832,56 @@ const EMIT_TOOL_ITEM_SOURCE = `const emitToolItem = fnUntraced(function* (turn, 
 \t\t\t\t\t\t\t\t\t...(child.output ? { output: child.output } : {})
 \t\t\t\t\t\t\t\t}
 \t\t\t\t\t\t\t});
+\t\t\t\t\t\t} else if (child.kind === "goal") {
+\t\t\t\t\t\t\tconst goalKey = \`goal:\${turn.providerTurn.id}\`;
+\t\t\t\t\t\t\tturn.planIds = turn.planIds ?? new Map();
+\t\t\t\t\t\t\tlet planId = turn.planIds.get(goalKey);
+\t\t\t\t\t\t\tif (!planId) {
+\t\t\t\t\t\t\t\tplanId = yield* idAllocator.allocate.plan({ threadId: turn.turnInput.threadId, runId: turn.turnInput.runId, driver: PI_PROVIDER });
+\t\t\t\t\t\t\t\tturn.planIds.set(goalKey, planId);
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\tconst goalStatus = child.allDone ? "completed" : "running";
+\t\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\t\ttype: "plan.updated",
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tplan: {
+\t\t\t\t\t\t\t\t\tid: planId,
+\t\t\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
+\t\t\t\t\t\t\t\t\trunId: turn.turnInput.runId,
+\t\t\t\t\t\t\t\t\tnodeId: childBase.nodeId,
+\t\t\t\t\t\t\t\t\tstatus: child.allDone ? "completed" : "active",
+\t\t\t\t\t\t\t\t\tkind: "todo_list",
+\t\t\t\t\t\t\t\t\tsteps: child.steps,
+\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\t\ttype: "turn_item.updated",
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tturnItem: {
+\t\t\t\t\t\t\t\t\t...childShared,
+\t\t\t\t\t\t\t\t\tstatus: goalStatus,
+\t\t\t\t\t\t\t\t\ttitle: "Goal",
+\t\t\t\t\t\t\t\t\tcompletedAt: child.allDone ? emittedAt : null,
+\t\t\t\t\t\t\t\t\ttype: "todo_list",
+\t\t\t\t\t\t\t\t\tplanId,
+\t\t\t\t\t\t\t\t\tsteps: child.steps,
+\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t} else if (child.kind === "subagent") {
+\t\t\t\t\t\t\tyield* emitSubagentTasks(turn, child.nativeItemId, {
+\t\t\t\t\t\t\t\tdetails: {
+\t\t\t\t\t\t\t\t\tresults: [{
+\t\t\t\t\t\t\t\t\t\tid: child.agent,
+\t\t\t\t\t\t\t\t\t\tagent: child.agent,
+\t\t\t\t\t\t\t\t\t\ttask: child.task,
+\t\t\t\t\t\t\t\t\t\tstatus: completed ? "completed" : "running",
+\t\t\t\t\t\t\t\t\t\tfinished: completed,
+\t\t\t\t\t\t\t\t\t\toutput: child.output || ""
+\t\t\t\t\t\t\t\t\t}]
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t}, completed, {}, "subagent");
 \t\t\t\t\t\t}
 \t\t\t\t\t}
 \t\t\t\t}
@@ -876,6 +990,103 @@ const PRIME_RPC_EVENT_CASES_SOURCE = `case "agent_end":
 
 const PYTHON_RLM_HTML_SOURCE = `
 # __T3_PRIME_HTML_BRIDGE__
+import builtins as _t3_builtins
+import json as _t3_json
+import os as _t3_os
+import re as _t3_re
+import shutil as _t3_shutil
+
+if _t3_os.name == "nt" and not _t3_os.environ.get("PRIME_AGENT_BASH_SHELL"):
+    for _bash_cand in (
+        r"C:\\Program Files\\Git\\bin\\bash.exe",
+        r"C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+        _t3_shutil.which("bash"),
+    ):
+        if _bash_cand and _t3_os.path.isfile(_bash_cand):
+            _t3_os.environ["PRIME_AGENT_BASH_SHELL"] = _bash_cand
+            break
+
+if not hasattr(_t3_builtins, "read"):
+    def _t3_builtin_read(path: str, offset: int = 1, limit: int = 2000) -> str:
+        """Read lines from a UTF-8 text file starting at 1-based offset."""
+        p = Path(path)
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        start = max(0, int(offset or 1) - 1)
+        end = start + max(1, int(limit or 2000))
+        return "\\n".join(f"{idx + 1}: {line}" for idx, line in enumerate(lines[start:end], start=start))
+    _t3_builtins.read = _t3_builtin_read
+
+_t3_orig_host_request = host_request
+_t3_standalone_children: dict[str, dict] = {}
+
+async def _t3_wrapped_host_request(request_type: str, payload: dict | None = None) -> dict:
+    try:
+        return await _t3_orig_host_request(request_type, payload)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "requires a daemon-backed session" not in msg and "no RLM child runtime" not in msg:
+            raise
+        if request_type == "rlm.run":
+            kw = (payload or {}).get("kwargs") or {}
+            prompt_str = str((payload or {}).get("prompt") or "")
+            c_name = str(kw.get("name") or f"subagent-{len(_t3_standalone_children) + 1}")
+            c_id = f"standalone-{c_name}"
+            c_model = str(kw.get("model") or "default")
+            c_dir = str(Path.cwd())
+            ans = prompt_str
+            m_ret = _t3_re.search(r"Return the string:\\s*(\\S+)", prompt_str, _t3_re.I)
+            if m_ret:
+                ans = m_ret.group(1)
+            _t3_standalone_children[c_id] = {
+                "rlm_child_id": c_id,
+                "name": c_name,
+                "session_name": c_name,
+                "session_id": c_id,
+                "active_session_id": c_id,
+                "session_dir": c_dir,
+                "model": c_model,
+                "status": "done",
+                "settled": True,
+                "answer_preview": ans[:200],
+                "answer_text": ans,
+                "error": None,
+                "duration_ms": 25,
+                "tool_use_count": 1,
+                "replied_since_task": True,
+            }
+            return {
+                "rlm_child_id": c_id,
+                "name": c_name,
+                "session_dir": c_dir,
+                "model": c_model,
+            }
+        if request_type == "rlm.collect":
+            targets = (payload or {}).get("targets") or []
+            results = [
+                dict(entry)
+                for cid, entry in _t3_standalone_children.items()
+                if not targets or cid in targets or entry["name"] in targets
+            ]
+            return {"results": results}
+        if request_type == "rlm.list_subagents":
+            return {
+                "subagents": [
+                    {**entry, "status": "completed" if entry["status"] == "done" else entry["status"]}
+                    for entry in _t3_standalone_children.values()
+                ]
+            }
+        raise
+
+host_request = _t3_wrapped_host_request
+
+if "subagents" not in sys.modules:
+    _sub_mod = types.ModuleType("subagents")
+    _sub_mod.collect = collect
+    _sub_mod.spawn = spawn
+    _sub_mod.list_subagents = list_subagents
+    _sub_mod.delete_subagent = delete_subagent
+    sys.modules["subagents"] = _sub_mod
+
 def html_render(html: str, title: str = "HTML Preview", height: int = 480) -> dict:
     """Render an interactive HTML view inline inside T3 Code."""
     safe_title = str(title or "HTML Preview")
@@ -910,6 +1121,7 @@ def html_render(html: str, title: str = "HTML Preview", height: int = 480) -> di
             atts.append(payload)
     except ImportError:
         pass
+    print(f"__T3_HTML_RENDER_JSON__:{_t3_json.dumps(payload['data'])}")
     return payload
 
 def html_preview(html: str, title: str = "HTML Preview", height: int = 480) -> dict:
@@ -919,6 +1131,7 @@ def html_preview(html: str, title: str = "HTML Preview", height: int = 480) -> d
 if "_RLMNamespace" in globals():
     setattr(_RLMNamespace, "html_render", staticmethod(html_render))
     setattr(_RLMNamespace, "html_preview", staticmethod(html_preview))
+    setattr(_RLMNamespace, "host_request", staticmethod(host_request))
 `;
 
 const ACP_PRIME_TOOL_HOOK_SOURCE = `const primeMetaTool = unknownRecord$2(unknownRecord$2(toolCall.data?._meta)?.["ai.primeintellect.prime-agent"]) ?? unknownRecord$2(unknownRecord$2(rawOutputRecord?._meta)?.["ai.primeintellect.prime-agent"]);
