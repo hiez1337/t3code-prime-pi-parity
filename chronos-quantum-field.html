@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta name="viewport" content="width=device-width, initial-scale=1"><style id="t3-theme">:root{color-scheme:dark;--background:#0a0a0a;--foreground:#f5f5f5;--muted:#111111;--muted-foreground:#818181;--card:#111111;--card-foreground:#f5f5f5;--popover:#111111;--popover-foreground:#f5f5f5;--secondary:#111111;--secondary-foreground:#f5f5f5;--border:#191919;--input:#1e1e1e;--ring:#346bf1;--primary:#346bf1;--primary-foreground:#ffffff;--accent:#346bf1;--accent-foreground:#ffffff;--accent-surface:#141414;--accent-surface-foreground:#f5f5f5;--destructive:#fb414a;--destructive-foreground:#ff6467;--destructive-surface:#301214;--warning:#fe9a00;--warning-foreground:#ffb900;--warning-surface:#312108;--success:#10b981;--success-foreground:#34d399;--info:#3b82f6;--info-foreground:#60a5fa;--code-background:#111111;--code-foreground:#f5f5f5;--chart-1:#346bf1;--chart-2:#2dd4bf;--chart-3:#fbbf24;--chart-4:#c084fc;--chart-5:#fb7185;--chart-6:#a3e635;--radius:0.625rem;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;--font-mono:"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;}@media (prefers-color-scheme: light){:root{color-scheme:light;--background:#fcfcfc;--foreground:#27272a;--muted:#fafafa;--muted-foreground:#71717b;--card:#ffffff;--card-foreground:#27272a;--popover:#ffffff;--popover-foreground:#27272a;--secondary:#fafafa;--secondary-foreground:#27272a;--border:#e4e4e7;--input:#d4d4d8;--ring:#1b4ed8;--primary:#1b4ed8;--primary-foreground:#ffffff;--accent:#1b4ed8;--accent-foreground:#ffffff;--accent-surface:#f4f4f5;--accent-surface-foreground:#18181b;--destructive:#fb2c36;--destructive-foreground:#c10007;--destructive-surface:#fcebec;--warning:#fe9a00;--warning-foreground:#bb4d00;--warning-surface:#fcf4e8;--success:#10b981;--success-foreground:#047857;--info:#3b82f6;--info-foreground:#1d4ed8;--code-background:#ffffff;--code-foreground:#27272a;--chart-1:#1b4ed8;--chart-2:#0d9488;--chart-3:#d97706;--chart-4:#9333ea;--chart-5:#e11d48;--chart-6:#65a30d;--radius:0.625rem;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;--font-mono:"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;}}html{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{margin:0}code,kbd,pre,samp{font-family:var(--font-mono)}:where(:focus-visible){outline:2px solid var(--ring)}:focus-visible{outline-width:2px!important;outline-offset:-2px!important}</style><script>(function(){var s=document.getElementById("t3-theme"),n=0;if(!s)return;var b="html{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{margin:0}code,kbd,pre,samp{font-family:var(--font-mono)}:where(:focus-visible){outline:2px solid var(--ring)}:focus-visible{outline-width:2px!important;outline-offset:-2px!important}";function a(t){if(!t||typeof t!=="object"||!t.variables||typeof t.variables!=="object")return;var c=":root{color-scheme:"+(t.appearance==="light"?"light":"dark")+";";for(var k in t.variables){if(/^--[a-z0-9-]+$/.test(k))c+=k+":"+String(t.variables[k]).replace(/[;{}<>]/g,"")+";";}s.textContent=c+"}"+b;}try{var m=/[#&]t3-theme=([^&]*)/.exec(location.hash);if(m){a(JSON.parse(decodeURIComponent(m[1])));history.replaceState(history.state,"",location.pathname+location.search);}}catch(e){}window.addEventListener("message",function(e){var d=e.data,p=d&&d.params;if(d&&d.jsonrpc==="2.0"&&d.method==="ui/notifications/host-context-changed"&&p&&p.styles)a({appearance:p.theme,variables:p.styles.variables});});document.addEventListener("click",function(e){var l=e.isTrusted?e.composedPath().find(function(t){return t&&t.matches&&t.matches("a[href]");}):null,u;if(!l)return;try{u=new URL(l.getAttribute("href"),document.baseURI);}catch(x){return;}if(!/^https?:$/.test(u.protocol)||u.href.split("#")[0]===location.href.split("#")[0])return;if(window.parent!==window){e.preventDefault();window.parent.postMessage({jsonrpc:"2.0",id:"t3-link-"+(++n),method:"ui/open-link",params:{url:u.href}},"*");}else{l.setAttribute("target","_blank");l.setAttribute("rel","noopener");}},true);if(window.parent!==window){var h,o,z=function(){var r=document.documentElement,v=Math.ceil(r.scrollHeight>r.clientHeight?r.scrollHeight:r.getBoundingClientRect().height);if(v===h)return;h=v;window.parent.postMessage({jsonrpc:"2.0",method:"ui/notifications/size-changed",params:{height:v}},"*");};if(window.ResizeObserver){o=new ResizeObserver(z);o.observe(document.documentElement);}document.addEventListener("DOMContentLoaded",function(){if(o&&document.body)o.observe(document.body);z();});window.addEventListener("load",z);}})();</script>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --bg: var(--background, #080b12);
+    --fg: var(--foreground, #f8fafc);
+    --card-bg: var(--card, rgba(15, 23, 42, 0.85));
+    --border-col: var(--border, rgba(255, 255, 255, 0.12));
+    --primary-col: var(--primary, #38bdf8);
+    --accent-col: var(--accent, #a855f7);
+    --emerald-col: #10b981;
+    --amber-col: #f59e0b;
+    --rose-col: #f43f5e;
+    --font: var(--font-sans, system-ui, -apple-system, sans-serif);
+    --font-m: var(--font-mono, ui-monospace, monospace);
+    --rad: var(--radius, 14px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    color: var(--fg);
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .quantum-app {
+    width: 100%;
+    border-radius: var(--rad);
+    background: var(--card-bg);
+    border: 1px solid var(--border-col);
+    box-shadow: 0 20px 48px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+    backdrop-filter: blur(24px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--border-col);
+    background: rgba(0, 0, 0, 0.3);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pulse-emitter {
+    position: relative;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pulse-center {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #06b6d4;
+    box-shadow: 0 0 10px #06b6d4;
+  }
+  .pulse-wave {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 1.5px solid #06b6d4;
+    animation: ping 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  }
+  @keyframes ping {
+    0% { transform: scale(0.6); opacity: 1; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+  .app-name {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .tag-capsule {
+    font-family: var(--font-m);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+  .mode-tabs {
+    display: flex;
+    gap: 3px;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--border-col);
+  }
+  .mode-tab {
+    background: transparent;
+    border: none;
+    color: var(--muted-foreground, #94a3b8);
+    padding: 5px 11px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .mode-tab:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+  .mode-tab.active {
+    background: var(--primary-col);
+    color: #030d1a;
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.4);
+  }
+  .viewport {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    cursor: crosshair;
+    background: radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.6) 0%, rgba(4, 7, 15, 0.98) 100%);
+    overflow: hidden;
+  }
+  canvas#simCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .stage-hints {
+    position: absolute;
+    bottom: 12px;
+    left: 16px;
+    font-size: 10px;
+    color: rgba(148, 163, 184, 0.6);
+    pointer-events: none;
+    letter-spacing: 0.05em;
+    font-family: var(--font-m);
+    display: flex;
+    gap: 14px;
+  }
+  .dock-bar {
+    padding: 11px 18px;
+    border-top: 1px solid var(--border-col);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.32);
+    flex-wrap: wrap;
+  }
+  .dock-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .dock-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-col);
+    color: #f1f5f9;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.18s;
+  }
+  .dock-btn:hover {
+    background: rgba(255, 255, 255, 0.13);
+    border-color: rgba(255, 255, 255, 0.28);
+    transform: translateY(-1px);
+  }
+  .dock-btn:active { transform: translateY(1px); }
+  .dock-btn.accent {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(56, 189, 248, 0.35));
+    border-color: rgba(168, 85, 247, 0.55);
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+  }
+  .slider-unit {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    color: #94a3b8;
+    font-family: var(--font-m);
+  }
+  .slider-ctrl {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 65px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.16);
+    outline: none;
+  }
+  .slider-ctrl::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary-col);
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--primary-col);
+  }
+  .dock-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .tele-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .tele-label {
+    font-size: 8px;
+    color: #64748b;
+    font-family: var(--font-m);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tele-val {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-m);
+    color: #10b981;
+  }
+  .spark-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  canvas#sparkCanvas {
+    width: 85px;
+    height: 22px;
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div class="quantum-app">
+  <div class="header-bar">
+    <div class="title-wrap">
+      <div class="pulse-emitter">
+        <div class="pulse-center"></div>
+        <div class="pulse-wave"></div>
+      </div>
+      <span class="app-name">Chronos // Quantum Field Simulation</span>
+      <div class="tag-capsule">
+        <span id="fpsCount">60 FPS</span> • <span id="particleCount">320 PARTICLES</span>
+      </div>
+    </div>
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-mode="vortex">Graviton Vortex</button>
+      <button class="mode-tab" data-mode="lattice">Crystal Lattice</button>
+      <button class="mode-tab" data-mode="wave">Harmonic Wave</button>
+      <button class="mode-tab" data-mode="chaos">Brownian Drift</button>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <canvas id="simCanvas"></canvas>
+    <div class="stage-hints">
+      <span>[DRAG] GRAVITY WELL</span>
+      <span>[CLICK] SHOCK PULSE</span>
+      <span>[AUDIO] PROCEDURAL SYNTH</span>
+    </div>
+  </div>
+
+  <div class="dock-bar">
+    <div class="dock-left">
+      <button class="dock-btn accent" id="pulseBtn">⚡ Resonance Pulse</button>
+      <button class="dock-btn" id="invertBtn">🔄 Invert Gravity</button>
+      <button class="dock-btn" id="audioBtn">🔇 Audio: OFF</button>
+      <div class="slider-unit">
+        <span>Speed</span>
+        <input type="range" class="slider-ctrl" id="speedRange" min="1" max="10" value="6">
+      </div>
+      <div class="slider-unit">
+        <span>Force</span>
+        <input type="range" class="slider-ctrl" id="forceRange" min="1" max="10" value="5">
+      </div>
+    </div>
+
+    <div class="dock-right">
+      <div class="tele-stat">
+        <span class="tele-label">Entropy Delta</span>
+        <span class="tele-val" id="entropyVal">Δ 0.042</span>
+      </div>
+      <div class="spark-wrap">
+        <span class="tele-label">Field Flux</span>
+        <canvas id="sparkCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('simCanvas');
+  const ctx = canvas.getContext('2d');
+  const view = document.getElementById('viewport');
+  const spark = document.getElementById('sparkCanvas');
+  const sparkCtx = spark.getContext('2d');
+  const fpsDisp = document.getElementById('fpsCount');
+  const countDisp = document.getElementById('particleCount');
+  const entropyDisp = document.getElementById('entropyVal');
+
+  let w = 0, h = 0;
+  let dpr = window.devicePixelRatio || 1;
+
+  function resize() {
+    const rect = view.getBoundingClientRect();
+    w = rect.width;
+    h = rect.height;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    const sRect = spark.getBoundingClientRect();
+    spark.width = Math.floor(sRect.width * dpr);
+    spark.height = Math.floor(sRect.height * dpr);
+    sparkCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sparkCtx.scale(dpr, dpr);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let audioCtx = null;
+  let audioOn = false;
+  function playHarmonic(freq, type = 'sine', duration = 0.14, gainVal = 0.06) {
+    if (!audioOn) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      g.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {}
+  }
+
+  const audioBtn = document.getElementById('audioBtn');
+  audioBtn.addEventListener('click', () => {
+    audioOn = !audioOn;
+    audioBtn.textContent = audioOn ? '🔊 Audio: ON' : '🔇 Audio: OFF';
+    audioBtn.style.color = audioOn ? '#38bdf8' : '#f1f5f9';
+    if (audioOn) playHarmonic(440, 'triangle', 0.25, 0.08);
+  });
+
+  const SPECIES = [
+    { name: 'PHOTON', color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.5)', mass: 1 },
+    { name: 'GRAVITON', color: '#a855f7', glow: 'rgba(168, 85, 247, 0.5)', mass: 2.2 },
+    { name: 'GLUON', color: '#10b981', glow: 'rgba(16, 185, 129, 0.5)', mass: 1.5 },
+    { name: 'QUARK', color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.5)', mass: 3 }
+  ];
+
+  let particles = [];
+  let shockwaves = [];
+  let currentMode = 'vortex';
+  let isGravityInverted = false;
+  let speedFactor = 6;
+  let forceFactor = 5;
+  let cursor = { x: -1000, y: -1000, isDown: false };
+  let fluxHistory = new Array(30).fill(20);
+  let fluxScore = 0;
+
+  function initParticles(count = 320) {
+    particles = [];
+    const cx = w / 2, cy = h / 2;
+    for (let i = 0; i < count; i++) {
+      const spec = SPECIES[i % SPECIES.length];
+      const theta = Math.random() * Math.PI * 2;
+      const radius = 20 + Math.random() * 180;
+      particles.push({
+        x: cx + Math.cos(theta) * radius,
+        y: cy + Math.sin(theta) * radius,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: (Math.random() - 0.5) * 1.5,
+        targetX: 0,
+        targetY: 0,
+        radius: Math.random() * 2 + 1.8,
+        color: spec.color,
+        glow: spec.glow,
+        mass: spec.mass,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    countDisp.textContent = particles.length + ' PARTICLES';
+  }
+  initParticles(320);
+
+  function applyMode(mode) {
+    currentMode = mode;
+    const cx = w / 2, cy = h / 2;
+    if (mode === 'lattice') {
+      const cols = 20;
+      const rows = 16;
+      const xStep = (w - 120) / cols;
+      const yStep = (h - 80) / rows;
+      particles.forEach((p, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols) % rows;
+        p.targetX = 60 + col * xStep;
+        p.targetY = 40 + row * yStep;
+      });
+    }
+  }
+
+  view.addEventListener('pointermove', (e) => {
+    const r = view.getBoundingClientRect();
+    cursor.x = e.clientX - r.left;
+    cursor.y = e.clientY - r.top;
+  });
+  view.addEventListener('pointerdown', (e) => {
+    cursor.isDown = true;
+    const r = view.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    triggerShock(x, y);
+    playHarmonic(350, 'sawtooth', 0.25, 0.1);
+  });
+  window.addEventListener('pointerup', () => { cursor.isDown = false; });
+
+  function triggerShock(x, y) {
+    shockwaves.push({ x, y, radius: 5, maxRadius: 260, alpha: 1, speed: 7.5 });
+    for (const p of particles) {
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < 260) {
+        const force = ((260 - d) / 260) * 16;
+        p.vx += (dx / d) * force;
+        p.vy += (dy / d) * force;
+      }
+    }
+    fluxScore += 25;
+  }
+
+  document.getElementById('pulseBtn').addEventListener('click', () => {
+    triggerShock(w / 2, h / 2);
+    playHarmonic(523.25, 'triangle', 0.3, 0.12);
+  });
+  document.getElementById('invertBtn').addEventListener('click', function() {
+    isGravityInverted = !isGravityInverted;
+    this.style.color = isGravityInverted ? '#f43f5e' : '#f1f5f9';
+    playHarmonic(600, 'sine', 0.15, 0.08);
+  });
+  document.getElementById('speedRange').addEventListener('input', (e) => {
+    speedFactor = parseInt(e.target.value);
+  });
+  document.getElementById('forceRange').addEventListener('input', (e) => {
+    forceFactor = parseInt(e.target.value);
+  });
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      applyMode(tab.getAttribute('data-mode'));
+      playHarmonic(700, 'sine', 0.12, 0.08);
+    });
+  });
+
+  function stepPhysics() {
+    const cx = w / 2, cy = h / 2;
+    const gravDir = isGravityInverted ? -1 : 1;
+    const forceScale = (forceFactor / 5) * 0.0018 * gravDir;
+    const speedScale = speedFactor / 6;
+
+    for (const p of particles) {
+      if (currentMode === 'vortex') {
+        const dx = cx - p.x;
+        const dy = cy - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        p.vx += (dx / d) * (d * forceScale * 0.4);
+        p.vy += (dy / d) * (d * forceScale * 0.4);
+        p.vx += (-dy / d) * (1.8 * speedScale);
+        p.vy += (dx / d) * (1.8 * speedScale);
+      } else if (currentMode === 'lattice') {
+        p.vx += (p.targetX - p.x) * 0.06;
+        p.vy += (p.targetY - p.y) * 0.06;
+      } else if (currentMode === 'wave') {
+        p.phase += 0.04 * speedScale;
+        const waveY = cy + Math.sin(p.x * 0.02 + p.phase) * 60;
+        p.vy += (waveY - p.y) * 0.08;
+        p.vx += 0.4 * speedScale;
+      } else if (currentMode === 'chaos') {
+        p.vx += (Math.random() - 0.5) * 0.8 * speedScale;
+        p.vy += (Math.random() - 0.5) * 0.8 * speedScale;
+      }
+
+      if (cursor.isDown) {
+        const cdx = cursor.x - p.x;
+        const cdy = cursor.y - p.y;
+        const cd = Math.hypot(cdx, cdy) || 1;
+        if (cd < 240) {
+          const pull = ((240 - cd) / 240) * 0.9 * gravDir;
+          p.vx += (cdx / cd) * pull;
+          p.vy += (cdy / cd) * pull;
+        }
+      }
+
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      p.x += p.vx * speedScale;
+      p.y += p.vy * speedScale;
+
+      if (p.x < 10) { p.x = 10; p.vx *= -0.8; }
+      if (p.x > w - 10) { p.x = w - 10; p.vx *= -0.8; }
+      if (p.y < 10) { p.y = 10; p.vy *= -0.8; }
+      if (p.y > h - 10) { p.y = h - 10; p.vy *= -0.8; }
+    }
+
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const s = shockwaves[i];
+      s.radius += s.speed;
+      s.alpha = Math.max(0, 1 - (s.radius / s.maxRadius));
+      if (s.radius >= s.maxRadius) shockwaves.splice(i, 1);
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    ctx.lineWidth = 1;
+    const gridSpan = 40;
+    ctx.beginPath();
+    for (let x = 0; x < w; x += gridSpan) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, h);
+    }
+    for (let y = 0; y < h; y += gridSpan) {
+      ctx.moveTo(0, y); ctx.lineTo(w, y);
+    }
+    ctx.stroke();
+
+    for (const s of shockwaves) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(56, 189, 248, ${s.alpha * 0.8})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(168, 85, 247, ${s.alpha * 0.35})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const filamentLimit = 42;
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < particles.length; i++) {
+      const p1 = particles[i];
+      for (let j = i + 1; j < Math.min(i + 14, particles.length); j++) {
+        const p2 = particles[j];
+        const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        if (d < filamentLimit) {
+          const alpha = (1 - d / filamentLimit) * 0.28;
+          ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+
+      ctx.fillStyle = p1.glow;
+      ctx.beginPath();
+      ctx.arc(p1.x, p1.y, p1.radius + 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = p1.color;
+      ctx.beginPath();
+      ctx.arc(p1.x, p1.y, p1.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  let sparkClock = 0;
+  function updateSpark() {
+    sparkClock++;
+    if (sparkClock > 7) {
+      sparkClock = 0;
+      fluxHistory.push(fluxScore);
+      fluxScore = Math.max(10, Math.floor(fluxScore * 0.5));
+      if (fluxHistory.length > 30) fluxHistory.shift();
+
+      const sw = spark.width / dpr;
+      const sh = spark.height / dpr;
+      sparkCtx.clearRect(0, 0, sw, sh);
+      const max = Math.max(...fluxHistory, 40);
+      sparkCtx.beginPath();
+      sparkCtx.strokeStyle = '#38bdf8';
+      sparkCtx.lineWidth = 1.5;
+      for (let i = 0; i < fluxHistory.length; i++) {
+        const x = (i / (fluxHistory.length - 1)) * sw;
+        const y = sh - (fluxHistory[i] / max) * (sh - 4) - 2;
+        if (i === 0) sparkCtx.moveTo(x, y); else sparkCtx.lineTo(x, y);
+      }
+      sparkCtx.stroke();
+
+      entropyDisp.textContent = 'Δ ' + (0.02 + (fluxHistory[fluxHistory.length - 1] / 600)).toFixed(3);
+    }
+  }
+
+  let lastStamp = performance.now();
+  let frames = 0, elapsed = 0;
+  function loop(time) {
+    const dt = (time - lastStamp) / 1000;
+    lastStamp = time;
+    frames++;
+    elapsed += dt;
+    if (elapsed >= 0.5) {
+      fpsDisp.textContent = Math.round(frames / elapsed) + ' FPS';
+      frames = 0;
+      elapsed = 0;
+    }
+
+    stepPhysics();
+    render();
+    updateSpark();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

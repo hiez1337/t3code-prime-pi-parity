@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta name="viewport" content="width=device-width, initial-scale=1"><style id="t3-theme">:root{color-scheme:dark;--background:#0a0a0a;--foreground:#f5f5f5;--muted:#111111;--muted-foreground:#818181;--card:#111111;--card-foreground:#f5f5f5;--popover:#111111;--popover-foreground:#f5f5f5;--secondary:#111111;--secondary-foreground:#f5f5f5;--border:#191919;--input:#1e1e1e;--ring:#346bf1;--primary:#346bf1;--primary-foreground:#ffffff;--accent:#346bf1;--accent-foreground:#ffffff;--accent-surface:#141414;--accent-surface-foreground:#f5f5f5;--destructive:#fb414a;--destructive-foreground:#ff6467;--destructive-surface:#301214;--warning:#fe9a00;--warning-foreground:#ffb900;--warning-surface:#312108;--success:#10b981;--success-foreground:#34d399;--info:#3b82f6;--info-foreground:#60a5fa;--code-background:#111111;--code-foreground:#f5f5f5;--chart-1:#346bf1;--chart-2:#2dd4bf;--chart-3:#fbbf24;--chart-4:#c084fc;--chart-5:#fb7185;--chart-6:#a3e635;--radius:0.625rem;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;--font-mono:"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;}@media (prefers-color-scheme: light){:root{color-scheme:light;--background:#fcfcfc;--foreground:#27272a;--muted:#fafafa;--muted-foreground:#71717b;--card:#ffffff;--card-foreground:#27272a;--popover:#ffffff;--popover-foreground:#27272a;--secondary:#fafafa;--secondary-foreground:#27272a;--border:#e4e4e7;--input:#d4d4d8;--ring:#1b4ed8;--primary:#1b4ed8;--primary-foreground:#ffffff;--accent:#1b4ed8;--accent-foreground:#ffffff;--accent-surface:#f4f4f5;--accent-surface-foreground:#18181b;--destructive:#fb2c36;--destructive-foreground:#c10007;--destructive-surface:#fcebec;--warning:#fe9a00;--warning-foreground:#bb4d00;--warning-surface:#fcf4e8;--success:#10b981;--success-foreground:#047857;--info:#3b82f6;--info-foreground:#1d4ed8;--code-background:#ffffff;--code-foreground:#27272a;--chart-1:#1b4ed8;--chart-2:#0d9488;--chart-3:#d97706;--chart-4:#9333ea;--chart-5:#e11d48;--chart-6:#65a30d;--radius:0.625rem;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;--font-mono:"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;}}html{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{margin:0}code,kbd,pre,samp{font-family:var(--font-mono)}:where(:focus-visible){outline:2px solid var(--ring)}:focus-visible{outline-width:2px!important;outline-offset:-2px!important}</style><script>(function(){var s=document.getElementById("t3-theme"),n=0;if(!s)return;var b="html{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{margin:0}code,kbd,pre,samp{font-family:var(--font-mono)}:where(:focus-visible){outline:2px solid var(--ring)}:focus-visible{outline-width:2px!important;outline-offset:-2px!important}";function a(t){if(!t||typeof t!=="object"||!t.variables||typeof t.variables!=="object")return;var c=":root{color-scheme:"+(t.appearance==="light"?"light":"dark")+";";for(var k in t.variables){if(/^--[a-z0-9-]+$/.test(k))c+=k+":"+String(t.variables[k]).replace(/[;{}<>]/g,"")+";";}s.textContent=c+"}"+b;}try{var m=/[#&]t3-theme=([^&]*)/.exec(location.hash);if(m){a(JSON.parse(decodeURIComponent(m[1])));history.replaceState(history.state,"",location.pathname+location.search);}}catch(e){}window.addEventListener("message",function(e){var d=e.data,p=d&&d.params;if(d&&d.jsonrpc==="2.0"&&d.method==="ui/notifications/host-context-changed"&&p&&p.styles)a({appearance:p.theme,variables:p.styles.variables});});document.addEventListener("click",function(e){var l=e.isTrusted?e.composedPath().find(function(t){return t&&t.matches&&t.matches("a[href]");}):null,u;if(!l)return;try{u=new URL(l.getAttribute("href"),document.baseURI);}catch(x){return;}if(!/^https?:$/.test(u.protocol)||u.href.split("#")[0]===location.href.split("#")[0])return;if(window.parent!==window){e.preventDefault();window.parent.postMessage({jsonrpc:"2.0",id:"t3-link-"+(++n),method:"ui/open-link",params:{url:u.href}},"*");}else{l.setAttribute("target","_blank");l.setAttribute("rel","noopener");}},true);if(window.parent!==window){var h,o,z=function(){var r=document.documentElement,v=Math.ceil(r.scrollHeight>r.clientHeight?r.scrollHeight:r.getBoundingClientRect().height);if(v===h)return;h=v;window.parent.postMessage({jsonrpc:"2.0",method:"ui/notifications/size-changed",params:{height:v}},"*");};if(window.ResizeObserver){o=new ResizeObserver(z);o.observe(document.documentElement);}document.addEventListener("DOMContentLoaded",function(){if(o&&document.body)o.observe(document.body);z();});window.addEventListener("load",z);}})();</script>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --bg: var(--background, #0b0f19);
+    --fg: var(--foreground, #f8fafc);
+    --card-bg: var(--card, rgba(15, 23, 42, 0.82));
+    --border-col: var(--border, rgba(255, 255, 255, 0.12));
+    --primary-col: var(--primary, #38bdf8);
+    --accent-col: var(--accent, #a855f7);
+    --muted-col: var(--muted-foreground, #94a3b8);
+    --font: var(--font-sans, system-ui, -apple-system, sans-serif);
+    --font-m: var(--font-mono, ui-monospace, monospace);
+    --rad: var(--radius, 14px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    color: var(--fg);
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .swarm-app {
+    width: 100%;
+    border-radius: var(--rad);
+    background: var(--card-bg);
+    border: 1px solid var(--border-col);
+    box-shadow: 0 20px 48px -12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-col);
+    background: rgba(0, 0, 0, 0.25);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .radar-ring {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .radar-core {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+  }
+  .radar-pulse {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 1.5px solid #10b981;
+    animation: radarPing 2.2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  }
+  @keyframes radarPing {
+    0% { transform: scale(0.6); opacity: 1; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  .brand-name {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .status-pill {
+    font-family: var(--font-m);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .topo-segmented {
+    display: flex;
+    gap: 3px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--border-col);
+  }
+  .topo-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted-col);
+    padding: 4px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .topo-btn:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+  .topo-btn.active {
+    background: var(--primary-col);
+    color: #030d1a;
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.4);
+  }
+  .canvas-stage {
+    position: relative;
+    width: 100%;
+    height: 380px;
+    cursor: crosshair;
+    background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, rgba(10, 15, 26, 0.95) 100%);
+    overflow: hidden;
+  }
+  canvas#simCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .hud-card {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.94);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: #f1f5f9;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.6), 0 0 20px rgba(56, 189, 248, 0.25);
+    backdrop-filter: blur(12px);
+    transform: translate(-50%, -125%);
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+    opacity: 0;
+    min-width: 180px;
+    z-index: 20;
+  }
+  .hud-card.active {
+    opacity: 1;
+    transform: translate(-50%, -135%);
+  }
+  .hud-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .hud-agent-name {
+    font-weight: 700;
+    font-family: var(--font-m);
+    color: #f8fafc;
+  }
+  .hud-role-pill {
+    font-size: 9px;
+    font-family: var(--font-m);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .hud-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 3px 0;
+    color: #94a3b8;
+    font-size: 10px;
+  }
+  .hud-val {
+    color: #f8fafc;
+    font-family: var(--font-m);
+    font-weight: 600;
+  }
+  .hud-bar-bg {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    margin-top: 5px;
+    overflow: hidden;
+  }
+  .hud-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #a855f7);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .stage-overlay-tips {
+    position: absolute;
+    bottom: 10px;
+    left: 14px;
+    font-size: 10px;
+    color: rgba(148, 163, 184, 0.65);
+    pointer-events: none;
+    letter-spacing: 0.04em;
+    font-family: var(--font-m);
+    display: flex;
+    gap: 10px;
+  }
+  .control-dock {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-col);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.28);
+    flex-wrap: wrap;
+  }
+  .btn-cluster {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tool-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-col);
+    color: #f1f5f9;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.18s;
+  }
+  .tool-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+  }
+  .tool-btn:active { transform: translateY(1px); }
+  .tool-btn.primary-glow {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(56, 189, 248, 0.35));
+    border-color: rgba(168, 85, 247, 0.55);
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+  }
+  .tool-btn.primary-glow:hover {
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.45);
+  }
+  .param-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slider-unit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #94a3b8;
+    font-family: var(--font-m);
+  }
+  .tech-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 65px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.16);
+    outline: none;
+  }
+  .tech-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--primary-col);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--primary-col);
+  }
+  .telemetry-strip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .stat-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .stat-label {
+    font-size: 8px;
+    color: #64748b;
+    font-family: var(--font-m);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .stat-val {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-m);
+    color: #10b981;
+  }
+  .spark-box {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  canvas#sparkCanvas {
+    width: 80px;
+    height: 20px;
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div class="swarm-app">
+  <div class="nav-header">
+    <div class="brand-group">
+      <div class="radar-ring">
+        <div class="radar-core"></div>
+        <div class="radar-pulse"></div>
+      </div>
+      <span class="brand-name">SYNAPSE // Autonomous Agent Cluster</span>
+      <div class="status-pill">
+        <span id="fpsIndicator">60 FPS</span> • <span id="agentCountIndicator">14 AGENTS</span>
+      </div>
+    </div>
+    <div class="topo-segmented">
+      <button class="topo-btn active" data-topo="mesh">Neural Swarm</button>
+      <button class="topo-btn" data-topo="pipeline">DAG Pipeline</button>
+      <button class="topo-btn" data-topo="consensus">Consensus Ring</button>
+      <button class="topo-btn" data-topo="orbit">Quantum Core</button>
+    </div>
+  </div>
+
+  <div class="canvas-stage" id="canvasStage">
+    <canvas id="simCanvas"></canvas>
+    
+    <div class="hud-card" id="hudCard">
+      <div class="hud-header">
+        <span class="hud-agent-name" id="hudName">Agent-07</span>
+        <span class="hud-role-pill" id="hudRoleBadge">COORDINATOR</span>
+      </div>
+      <div class="hud-row"><span>Model:</span><span class="hud-val" id="hudModel">Claude 3.7</span></div>
+      <div class="hud-row"><span>Throughput:</span><span class="hud-val" id="hudThroughput">380 tps</span></div>
+      <div class="hud-row"><span>Latency:</span><span class="hud-val" id="hudLatency">1.2 ms</span></div>
+      <div class="hud-row"><span>Compute Load:</span><span class="hud-val" id="hudLoad">68%</span></div>
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="hudLoadBar" style="width: 68%"></div></div>
+    </div>
+
+    <div class="stage-overlay-tips">
+      <span>[DRAG] REPOSITION</span>
+      <span>[CLICK] IMPULSE PULSE</span>
+      <span>[HOVER] TELEMETRY</span>
+    </div>
+  </div>
+
+  <div class="control-dock">
+    <div class="btn-cluster">
+      <button class="tool-btn primary-glow" id="shockBtn">⚡ Shockwave</button>
+      <button class="tool-btn" id="surgeBtn">🚀 Signal Surge</button>
+      <button class="tool-btn" id="spawnBtn">➕ Spawn Agent</button>
+      <button class="tool-btn" id="audioToggleBtn">🔇 Audio: OFF</button>
+    </div>
+
+    <div class="param-group">
+      <div class="slider-unit">
+        <span>Speed</span>
+        <input type="range" class="tech-slider" id="speedSlider" min="1" max="10" value="6">
+      </div>
+      <div class="slider-unit">
+        <span>Tension</span>
+        <input type="range" class="tech-slider" id="tensionSlider" min="1" max="10" value="5">
+      </div>
+    </div>
+
+    <div class="telemetry-strip">
+      <div class="stat-block">
+        <span class="stat-label">Cluster Health</span>
+        <span class="stat-val">99.98%</span>
+      </div>
+      <div class="spark-box">
+        <span class="stat-label">Inter-Agent Flow</span>
+        <canvas id="sparkCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('simCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('canvasStage');
+  const sparkCanvas = document.getElementById('sparkCanvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+  const hudCard = document.getElementById('hudCard');
+  const fpsDisp = document.getElementById('fpsIndicator');
+  const agentCountDisp = document.getElementById('agentCountIndicator');
+
+  let width = 0, height = 0;
+  let dpr = window.devicePixelRatio || 1;
+
+  function resize() {
+    const rect = stage.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    const sRect = sparkCanvas.getBoundingClientRect();
+    sparkCanvas.width = Math.floor(sRect.width * dpr);
+    sparkCanvas.height = Math.floor(sRect.height * dpr);
+    sparkCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sparkCtx.scale(dpr, dpr);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let audioCtx = null;
+  let audioActive = false;
+
+  function playBlip(freq, type = 'sine', duration = 0.12, gainVal = 0.06) {
+    if (!audioActive) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {}
+  }
+
+  const audioBtn = document.getElementById('audioToggleBtn');
+  audioBtn.addEventListener('click', () => {
+    audioActive = !audioActive;
+    audioBtn.textContent = audioActive ? '🔊 Audio: ON' : '🔇 Audio: OFF';
+    audioBtn.style.color = audioActive ? '#38bdf8' : '#f1f5f9';
+    if (audioActive) playBlip(523.25, 'triangle', 0.2, 0.08);
+  });
+
+  const ROLES = [
+    {
+      name: 'COORDINATOR',
+      symbol: 'C',
+      color: '#38bdf8',
+      glow: 'rgba(56, 189, 248, 0.45)',
+      badgeBg: 'rgba(56, 189, 248, 0.2)',
+      model: 'Claude 3.7 Sonnet'
+    },
+    {
+      name: 'REASONING',
+      symbol: 'R',
+      color: '#a855f7',
+      glow: 'rgba(168, 85, 247, 0.45)',
+      badgeBg: 'rgba(168, 85, 247, 0.2)',
+      model: 'O3-Mini High'
+    },
+    {
+      name: 'EXECUTOR',
+      symbol: 'E',
+      color: '#10b981',
+      glow: 'rgba(16, 185, 129, 0.45)',
+      badgeBg: 'rgba(16, 185, 129, 0.2)',
+      model: 'GPT-4o Agent'
+    },
+    {
+      name: 'MEMORY DB',
+      symbol: 'M',
+      color: '#f59e0b',
+      glow: 'rgba(245, 158, 11, 0.45)',
+      badgeBg: 'rgba(245, 158, 11, 0.2)',
+      model: 'Vector-HNSW'
+    },
+    {
+      name: 'VERIFIER',
+      symbol: 'V',
+      color: '#f43f5e',
+      glow: 'rgba(244, 63, 94, 0.45)',
+      badgeBg: 'rgba(244, 63, 94, 0.2)',
+      model: 'Audit Guard'
+    }
+  ];
+
+  let nodes = [];
+  let packets = [];
+  let shockwaves = [];
+  let dust = [];
+  let currentTopo = 'mesh';
+  let draggedNode = null;
+  let hoveredNode = null;
+  let pointer = { x: -1000, y: -1000 };
+  let speedMult = 6;
+  let tensionMult = 5;
+  let throughputHistory = new Array(32).fill(25);
+  let opsBucket = 0;
+
+  for (let i = 0; i < 45; i++) {
+    dust.push({
+      x: Math.random() * (width || 720),
+      y: Math.random() * (height || 380),
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      radius: Math.random() * 1.4 + 0.6,
+      alpha: Math.random() * 0.35 + 0.1
+    });
+  }
+
+  function createAgent(roleIndex, x, y) {
+    const r = ROLES[roleIndex % ROLES.length];
+    return {
+      id: Math.floor(Math.random() * 899 + 100),
+      name: 'Agent-' + String(Math.floor(Math.random() * 90 + 10)),
+      role: r.name,
+      symbol: r.symbol,
+      color: r.color,
+      glow: r.glow,
+      badgeBg: r.badgeBg,
+      model: r.model,
+      x: x || width / 2 + (Math.random() - 0.5) * 220,
+      y: y || height / 2 + (Math.random() - 0.5) * 160,
+      vx: 0,
+      vy: 0,
+      targetX: null,
+      targetY: null,
+      radius: 13,
+      haloRadius: 0,
+      haloAlpha: 0,
+      spinAngle: Math.random() * Math.PI * 2,
+      load: Math.floor(Math.random() * 45 + 30),
+      throughput: Math.floor(Math.random() * 320 + 180),
+      latency: (Math.random() * 1.8 + 0.4).toFixed(1),
+      orbitR: 0,
+      orbitSpeed: 0,
+      angle: 0
+    };
+  }
+
+  function applyTopology(type) {
+    currentTopo = type;
+    nodes = [];
+    packets = [];
+    const cx = width / 2;
+    const cy = height / 2;
+
+    if (type === 'mesh') {
+      const count = 14;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        const dist = 105 + (i % 3) * 35;
+        nodes.push(createAgent(i % ROLES.length, cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist));
+      }
+    } else if (type === 'pipeline') {
+      const stages = [2, 3, 4, 3, 2];
+      const colStep = (width - 150) / (stages.length - 1);
+      stages.forEach((count, stageIdx) => {
+        const sx = 75 + stageIdx * colStep;
+        const rowStep = (height - 110) / (count + 1);
+        for (let r = 0; r < count; r++) {
+          const sy = 55 + (r + 1) * rowStep;
+          const n = createAgent(stageIdx, sx, sy);
+          n.targetX = sx;
+          n.targetY = sy;
+          nodes.push(n);
+        }
+      });
+    } else if (type === 'consensus') {
+      const ringCount = 11;
+      const radius = Math.min(width, height) * 0.35;
+      for (let i = 0; i < ringCount; i++) {
+        const angle = (i / ringCount) * Math.PI * 2;
+        const n = createAgent(4, cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+        n.targetX = cx + Math.cos(angle) * radius;
+        n.targetY = cy + Math.sin(angle) * radius;
+        nodes.push(n);
+      }
+      const lead = createAgent(0, cx, cy);
+      lead.radius = 16;
+      lead.targetX = cx;
+      lead.targetY = cy;
+      nodes.push(lead);
+    } else if (type === 'orbit') {
+      const core = createAgent(1, cx, cy);
+      core.radius = 19;
+      core.targetX = cx;
+      core.targetY = cy;
+      nodes.push(core);
+      const total = 13;
+      for (let i = 0; i < total; i++) {
+        const rRing = 60 + (i % 3) * 45;
+        const theta = (i / total) * Math.PI * 2;
+        const sat = createAgent((i % 4) + 1, cx + Math.cos(theta) * rRing, cy + Math.sin(theta) * rRing);
+        sat.orbitR = rRing;
+        sat.orbitSpeed = (0.016 / (1 + (i % 3) * 0.45)) * (i % 2 === 0 ? 1 : -1);
+        sat.angle = theta;
+        nodes.push(sat);
+      }
+    }
+    agentCountDisp.textContent = nodes.length + ' AGENTS';
+  }
+
+  applyTopology('mesh');
+
+  function updatePointer(e) {
+    const rect = stage.getBoundingClientRect();
+    pointer.x = e.clientX - rect.left;
+    pointer.y = e.clientY - rect.top;
+  }
+
+  stage.addEventListener('pointermove', (e) => {
+    updatePointer(e);
+    if (draggedNode) {
+      draggedNode.x = pointer.x;
+      draggedNode.y = pointer.y;
+      draggedNode.vx = 0;
+      draggedNode.vy = 0;
+      if (draggedNode.targetX !== null) {
+        draggedNode.targetX = pointer.x;
+        draggedNode.targetY = pointer.y;
+      }
+    } else {
+      hoveredNode = null;
+      for (const n of nodes) {
+        const dist = Math.hypot(n.x - pointer.x, n.y - pointer.y);
+        if (dist < n.radius + 8) {
+          hoveredNode = n;
+          break;
+        }
+      }
+      if (hoveredNode) {
+        hudCard.classList.add('active');
+        hudCard.style.left = hoveredNode.x + 'px';
+        hudCard.style.top = hoveredNode.y + 'px';
+        document.getElementById('hudName').textContent = hoveredNode.name;
+        const rb = document.getElementById('hudRoleBadge');
+        rb.textContent = hoveredNode.role;
+        rb.style.color = hoveredNode.color;
+        rb.style.background = hoveredNode.badgeBg;
+        document.getElementById('hudModel').textContent = hoveredNode.model;
+        document.getElementById('hudThroughput').textContent = hoveredNode.throughput + ' tps';
+        document.getElementById('hudLatency').textContent = hoveredNode.latency + ' ms';
+        document.getElementById('hudLoad').textContent = Math.round(hoveredNode.load) + '%';
+        document.getElementById('hudLoadBar').style.width = Math.min(100, hoveredNode.load) + '%';
+      } else {
+        hudCard.classList.remove('active');
+      }
+    }
+  });
+
+  stage.addEventListener('pointerdown', (e) => {
+    updatePointer(e);
+    for (const n of nodes) {
+      if (Math.hypot(n.x - pointer.x, n.y - pointer.y) < n.radius + 10) {
+        draggedNode = n;
+        n.haloRadius = 24;
+        n.haloAlpha = 1;
+        playBlip(784, 'sine', 0.1, 0.08);
+        return;
+      }
+    }
+    triggerShockwave(pointer.x, pointer.y);
+    playBlip(329.63, 'triangle', 0.25, 0.1);
+  });
+
+  window.addEventListener('pointerup', () => {
+    draggedNode = null;
+  });
+
+  function triggerShockwave(x, y) {
+    shockwaves.push({
+      x,
+      y,
+      radius: 8,
+      maxRadius: 240,
+      alpha: 1,
+      speed: 7.2
+    });
+
+    for (const n of nodes) {
+      const dx = n.x - x;
+      const dy = n.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < 240) {
+        const impulse = ((240 - d) / 240) * 16;
+        n.vx += (dx / d) * impulse;
+        n.vy += (dy / d) * impulse;
+        n.haloRadius = 20;
+        n.haloAlpha = 1;
+        n.load = Math.min(98, n.load + 14);
+      }
+    }
+    spawnBurstPackets(x, y, 7);
+  }
+
+  function spawnBurstPackets(fromX, fromY, count) {
+    for (let i = 0; i < count; i++) {
+      const src = nodes[Math.floor(Math.random() * nodes.length)];
+      const targets = nodes.filter(n => n !== src);
+      if (targets.length) {
+        const dst = targets[Math.floor(Math.random() * targets.length)];
+        packets.push({
+          from: src,
+          to: dst,
+          pct: 0,
+          speed: 0.035 + Math.random() * 0.03,
+          color: src.color,
+          size: 3.5
+        });
+        opsBucket += 22;
+      }
+    }
+  }
+
+  document.getElementById('shockBtn').addEventListener('click', () => {
+    triggerShockwave(width / 2, height / 2);
+    playBlip(440, 'sine', 0.3, 0.12);
+  });
+
+  document.getElementById('surgeBtn').addEventListener('click', () => {
+    for (let i = 0; i < 18; i++) {
+      const src = nodes[Math.floor(Math.random() * nodes.length)];
+      const targets = nodes.filter(n => n !== src);
+      if (targets.length) {
+        const dst = targets[Math.floor(Math.random() * targets.length)];
+        packets.push({
+          from: src,
+          to: dst,
+          pct: 0,
+          speed: 0.04 + Math.random() * 0.03,
+          color: src.color,
+          size: 4
+        });
+        opsBucket += 30;
+      }
+    }
+    playBlip(659.25, 'triangle', 0.35, 0.1);
+  });
+
+  document.getElementById('spawnBtn').addEventListener('click', () => {
+    const spawnX = width / 2 + (Math.random() - 0.5) * 100;
+    const spawnY = height / 2 + (Math.random() - 0.5) * 80;
+    const roleIdx = Math.floor(Math.random() * ROLES.length);
+    const n = createAgent(roleIdx, spawnX, spawnY);
+    nodes.push(n);
+    triggerShockwave(spawnX, spawnY);
+    agentCountDisp.textContent = nodes.length + ' AGENTS';
+    playBlip(880, 'sine', 0.15, 0.09);
+  });
+
+  document.querySelectorAll('.topo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.topo-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyTopology(btn.getAttribute('data-topo'));
+      playBlip(587.33, 'triangle', 0.18, 0.08);
+    });
+  });
+
+  document.getElementById('speedSlider').addEventListener('input', (e) => {
+    speedMult = parseInt(e.target.value);
+  });
+  document.getElementById('tensionSlider').addEventListener('input', (e) => {
+    tensionMult = parseInt(e.target.value);
+  });
+
+  let dispatchClock = 0;
+  function managePackets() {
+    dispatchClock++;
+    const cadence = Math.max(3, 26 - speedMult * 2.3);
+    if (dispatchClock > cadence && nodes.length > 1) {
+      dispatchClock = 0;
+      const src = nodes[Math.floor(Math.random() * nodes.length)];
+      let dst = null;
+
+      if (currentTopo === 'pipeline') {
+        const forwards = nodes.filter(n => n.x > src.x + 15 && n.x < src.x + 280);
+        if (forwards.length) dst = forwards[Math.floor(Math.random() * forwards.length)];
+      } else {
+        const pool = nodes.filter(n => n !== src);
+        dst = pool[Math.floor(Math.random() * pool.length)];
+      }
+
+      if (dst) {
+        packets.push({
+          from: src,
+          to: dst,
+          pct: 0,
+          speed: 0.022 + Math.random() * 0.024,
+          color: src.color,
+          size: 3.5
+        });
+        opsBucket += 8;
+      }
+    }
+
+    for (let i = packets.length - 1; i >= 0; i--) {
+      const p = packets[i];
+      p.pct += p.speed * (speedMult / 5);
+      if (p.pct >= 1) {
+        p.to.haloRadius = 16;
+        p.to.haloAlpha = 1;
+        p.to.load = Math.min(99, p.to.load + 4);
+        packets.splice(i, 1);
+        if (Math.random() < 0.28) playBlip(1046.5 + Math.random() * 300, 'sine', 0.04, 0.03);
+      }
+    }
+  }
+
+  function simulatePhysics() {
+    const kRepulsion = 2600;
+    const kAttract = 0.0055 * (tensionMult / 5);
+    const damping = 0.88;
+
+    if (currentTopo === 'mesh') {
+      for (let i = 0; i < nodes.length; i++) {
+        const n1 = nodes[i];
+        if (n1 === draggedNode) continue;
+
+        n1.vx += (width / 2 - n1.x) * 0.0007;
+        n1.vy += (height / 2 - n1.y) * 0.0007;
+
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n2 = nodes[j];
+          const dx = n2.x - n1.x;
+          const dy = n2.y - n1.y;
+          const dist = Math.hypot(dx, dy) || 1;
+
+          if (dist < 190) {
+            const force = kRepulsion / (dist * dist);
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
+            n1.vx -= fx;
+            n1.vy -= fy;
+            n2.vx += fx;
+            n2.vy += fy;
+          }
+          if (dist < 135) {
+            const spring = (dist - 95) * kAttract;
+            const fx = (dx / dist) * spring;
+            const fy = (dy / dist) * spring;
+            n1.vx += fx;
+            n1.vy += fy;
+            n2.vx += fx;
+            n2.vy += fy;
+          }
+        }
+      }
+    } else if (currentTopo === 'orbit') {
+      const core = nodes[0];
+      for (let i = 1; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n === draggedNode) continue;
+        n.angle += n.orbitSpeed * (speedMult / 5);
+        const tx = core.x + Math.cos(n.angle) * n.orbitR;
+        const ty = core.y + Math.sin(n.angle) * n.orbitR;
+        n.vx += (tx - n.x) * 0.16;
+        n.vy += (ty - n.y) * 0.16;
+      }
+    } else {
+      for (const n of nodes) {
+        if (n === draggedNode) continue;
+        if (n.targetX !== null) {
+          n.vx += (n.targetX - n.x) * 0.08;
+          n.vy += (n.targetY - n.y) * 0.08;
+        }
+      }
+    }
+
+    for (const n of nodes) {
+      if (n === draggedNode) continue;
+      n.vx *= damping;
+      n.vy *= damping;
+      n.x += n.vx;
+      n.y += n.vy;
+
+      const pad = 24;
+      if (n.x < pad) { n.x = pad; n.vx *= -0.4; }
+      if (n.x > width - pad) { n.x = width - pad; n.vx *= -0.4; }
+      if (n.y < pad) { n.y = pad; n.vy *= -0.4; }
+      if (n.y > height - pad) { n.y = height - pad; n.vy *= -0.4; }
+
+      n.spinAngle += 0.02;
+
+      if (n.haloAlpha > 0.01) {
+        n.haloRadius += 0.8;
+        n.haloAlpha *= 0.91;
+      }
+      if (n.load > 28) n.load = Math.max(28, n.load - 0.25);
+    }
+
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const s = shockwaves[i];
+      s.radius += s.speed;
+      s.alpha = Math.max(0, 1 - s.radius / s.maxRadius);
+      if (s.radius >= s.maxRadius) shockwaves.splice(i, 1);
+    }
+
+    for (const p of dust) {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = width;
+      if (p.x > width) p.x = 0;
+      if (p.y < 0) p.y = height;
+      if (p.y > height) p.y = 0;
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    const gridSpan = 38;
+    ctx.beginPath();
+    for (let x = 0; x < width; x += gridSpan) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    for (let y = 0; y < height; y += gridSpan) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    ctx.stroke();
+
+    for (const p of dust) {
+      ctx.fillStyle = `rgba(148, 163, 184, ${p.alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const s of shockwaves) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(168, 85, 247, ${s.alpha * 0.8})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(56, 189, 248, ${s.alpha * 0.4})`;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    if (currentTopo === 'mesh' || currentTopo === 'consensus') {
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          const dist = Math.hypot(n2.x - n1.x, n2.y - n1.y);
+          const maxDist = currentTopo === 'consensus' ? 145 : 135;
+          if (dist < maxDist) {
+            const isConnectedToHover = (hoveredNode && (hoveredNode === n1 || hoveredNode === n2));
+            const alpha = (1 - dist / maxDist) * (isConnectedToHover ? 0.8 : 0.28);
+            ctx.strokeStyle = isConnectedToHover ? '#38bdf8' : `rgba(148, 163, 184, ${alpha})`;
+            ctx.lineWidth = isConnectedToHover ? 1.8 : 1;
+            ctx.beginPath();
+            ctx.moveTo(n1.x, n1.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+          }
+        }
+      }
+    } else if (currentTopo === 'orbit') {
+      const core = nodes[0];
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      for (let r = 60; r <= 155; r += 45) {
+        ctx.beginPath();
+        ctx.arc(core.x, core.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      for (let i = 1; i < nodes.length; i++) {
+        const n = nodes[i];
+        const isHover = (hoveredNode && (hoveredNode === n || hoveredNode === core));
+        ctx.strokeStyle = isHover ? '#a855f7' : 'rgba(168, 85, 247, 0.18)';
+        ctx.beginPath();
+        ctx.moveTo(core.x, core.y);
+        ctx.lineTo(n.x, n.y);
+        ctx.stroke();
+      }
+    } else if (currentTopo === 'pipeline') {
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = 0; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          if (n2.x > n1.x && n2.x - n1.x < 190 && Math.abs(n2.y - n1.y) < 130) {
+            const isHover = (hoveredNode && (hoveredNode === n1 || hoveredNode === n2));
+            ctx.strokeStyle = isHover ? '#38bdf8' : 'rgba(56, 189, 248, 0.16)';
+            ctx.lineWidth = isHover ? 1.5 : 0.8;
+            ctx.beginPath();
+            ctx.moveTo(n1.x, n1.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+    ctx.restore();
+
+    for (const p of packets) {
+      const px = p.from.x + (p.to.x - p.from.x) * p.pct;
+      const py = p.from.y + (p.to.y - p.from.y) * p.pct;
+      ctx.save();
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(px, py, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    for (const n of nodes) {
+      const isHover = (n === hoveredNode);
+      const isDrag = (n === draggedNode);
+
+      if (n.haloAlpha > 0.02) {
+        ctx.strokeStyle = n.color;
+        ctx.globalAlpha = n.haloAlpha;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius + n.haloRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.save();
+      ctx.fillStyle = n.glow;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius + (isHover || isDrag ? 10 : 5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = n.color;
+      ctx.lineWidth = 1.2;
+      const markDist = n.radius + 4;
+      const mx = n.x + Math.cos(n.spinAngle) * markDist;
+      const my = n.y + Math.sin(n.spinAngle) * markDist;
+      ctx.beginPath();
+      ctx.arc(mx, my, 1.8, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = isHover ? '#ffffff' : n.color;
+      ctx.lineWidth = isHover ? 2.5 : 1.8;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#090d16';
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius - 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = isHover ? '#ffffff' : n.color;
+      ctx.font = `700 ${n.radius > 15 ? 12 : 9}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(n.symbol, n.x, n.y);
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = isHover ? '#f8fafc' : 'rgba(148, 163, 184, 0.7)';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.name, n.x, n.y + n.radius + 12);
+      ctx.restore();
+    }
+  }
+
+  let sparkClock = 0;
+  function updateThroughputChart() {
+    sparkClock++;
+    if (sparkClock > 7) {
+      sparkClock = 0;
+      throughputHistory.push(opsBucket);
+      opsBucket = Math.max(12, Math.floor(opsBucket * 0.45));
+      if (throughputHistory.length > 32) throughputHistory.shift();
+
+      const sRect = sparkCanvas.getBoundingClientRect();
+      const sw = sRect.width;
+      const sh = sRect.height;
+      sparkCtx.clearRect(0, 0, sw, sh);
+
+      const peak = Math.max(...throughputHistory, 50);
+      sparkCtx.beginPath();
+      sparkCtx.strokeStyle = '#38bdf8';
+      sparkCtx.lineWidth = 1.5;
+      for (let i = 0; i < throughputHistory.length; i++) {
+        const x = (i / (throughputHistory.length - 1)) * sw;
+        const y = sh - (throughputHistory[i] / peak) * (sh - 5) - 2;
+        if (i === 0) sparkCtx.moveTo(x, y); else sparkCtx.lineTo(x, y);
+      }
+      sparkCtx.stroke();
+
+      sparkCtx.lineTo(sw, sh);
+      sparkCtx.lineTo(0, sh);
+      sparkCtx.closePath();
+      const grad = sparkCtx.createLinearGradient(0, 0, 0, sh);
+      grad.addColorStop(0, 'rgba(56, 189, 248, 0.28)');
+      grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+      sparkCtx.fillStyle = grad;
+      sparkCtx.fill();
+    }
+  }
+
+  let prevStamp = performance.now();
+  let frames = 0;
+  let fpsElapsed = 0;
+
+  function tick(timestamp) {
+    const dt = (timestamp - prevStamp) / 1000;
+    prevStamp = timestamp;
+    frames++;
+    fpsElapsed += dt;
+    if (fpsElapsed >= 0.5) {
+      const fps = Math.round(frames / fpsElapsed);
+      fpsDisp.textContent = fps + ' FPS';
+      frames = 0;
+      fpsElapsed = 0;
+    }
+
+    simulatePhysics();
+    managePackets();
+    render();
+    updateThroughputChart();
+
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
