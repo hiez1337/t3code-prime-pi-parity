@@ -3,10 +3,18 @@
 const BRIDGE_MARKER = '/* __T3_PRIME_PI_PARITY_BRIDGE__ */';
 
 const BIN_CLI_BRIDGE_SOURCE = `${BRIDGE_MARKER}
-const PRIME_AGENT_DEFAULT_EXE = "C:\\\\Users\\\\Ak417ytrfg\\\\.local\\\\share\\\\prime-agent\\\\prime-agent.exe";
 const _bridgeFs = typeof NFS === "object" && NFS !== null ? NFS : typeof require === "function" ? require("node:fs") : null;
 const _bridgePath = typeof minpath === "object" && minpath !== null ? minpath : typeof require === "function" ? require("node:path") : null;
 const _bridgeOs = typeof OS === "object" && OS !== null ? OS : typeof require === "function" ? require("node:os") : null;
+function getPrimeAgentDefaultExe() {
+\tif (_bridgeOs && _bridgePath && typeof _bridgeOs.homedir === "function") {
+\t\treturn _bridgePath.join(_bridgeOs.homedir(), ".local", "share", "prime-agent", "prime-agent.exe");
+\t}
+\tif (process.env.USERPROFILE && _bridgePath) {
+\t\treturn _bridgePath.join(process.env.USERPROFILE, ".local", "share", "prime-agent", "prime-agent.exe");
+\t}
+\treturn "prime-agent.exe";
+}
 function isPrimeAgentBinary(cmd) {
 \tif (typeof cmd !== "string" || cmd.length === 0) return false;
 \treturn /(?:^|[\\\\/])(prime-agent|pa)(?:\\.(?:exe|cmd|bat))?$/i.test(cmd.trim());
@@ -15,10 +23,10 @@ function resolvePrimeCmdShim(cmd) {
 \tif (typeof cmd !== "string" || cmd.length === 0) return cmd;
 \tconst trimmed = cmd.trim();
 \tif (process.platform === "win32" && /(?:^|[\\\\/])(prime-agent|pa)(?:\\.(?:cmd|bat))?$/i.test(trimmed)) {
-\t\tif (_bridgeFs && typeof _bridgeFs.existsSync === "function" && _bridgeFs.existsSync(PRIME_AGENT_DEFAULT_EXE)) {
-\t\t\treturn PRIME_AGENT_DEFAULT_EXE;
+\t\tconst defaultExe = getPrimeAgentDefaultExe();
+\t\tif (_bridgeFs && typeof _bridgeFs.existsSync === "function" && _bridgeFs.existsSync(defaultExe)) {
+\t\t\treturn defaultExe;
 \t\t}
-\t\treturn PRIME_AGENT_DEFAULT_EXE;
 \t}
 \treturn cmd;
 }
@@ -182,7 +190,10 @@ function ensurePrimeHtmlRenderAttachment(threadId, stableKey, html, title, heigh
 \tconst safeHeight = typeof height === "number" && Number.isFinite(height) ? Math.min(2000, Math.max(80, Math.round(height))) : 480;
 \tlet attachmentId = typeof createDeterministicAttachmentId === "function" ? createDeterministicAttachmentId(String(threadId || "thread"), String(stableKey || "html")) : null;
 \tif (attachmentId) attachmentId = \`\${attachmentId}-html\`;
-\telse attachmentId = \`thread-00000000-0000-0000-0000-000000000001-html\`;
+\telse {
+\t\tconst cleanKey = String(stableKey || "html").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12) || "fallback";
+\t\tattachmentId = \`thread-00000000-0000-0000-0000-\${cleanKey.padStart(12, "0")}-html\`;
+\t}
 \tif (typeof html === "string" && html.trim().length > 0 && _bridgeFs && _bridgePath && _bridgeOs) {
 \t\tconst attDir = _bridgePath.join(_bridgeOs.homedir(), ".t3", "userdata", "attachments");
 \t\t_bridgeFs.mkdirSync(attDir, { recursive: true });

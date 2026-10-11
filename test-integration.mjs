@@ -18,8 +18,9 @@ const {
 } = require('./t3-prime-bridge.js');
 const { patchBinCliContent } = require('./apply-t3-patch.js');
 
-const inspectBinCli = 'C:/Users/Ak417ytrfg/AppData/Local/Temp/opencode/t3-inspect/apps/server/dist/binCli-CyxUejOW.mjs';
-const inspectClientDir = 'C:/Users/Ak417ytrfg/AppData/Local/Temp/opencode/t3-inspect/apps/server/dist/client/assets';
+const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const inspectBinCli = path.join(localAppData, 'Temp', 'opencode', 't3-inspect', 'apps', 'server', 'dist', 'binCli-CyxUejOW.mjs');
+const inspectClientDir = path.join(localAppData, 'Temp', 'opencode', 't3-inspect', 'apps', 'server', 'dist', 'client', 'assets');
 const t3SettingsPath = path.join(os.homedir(), '.t3', 'userdata', 'settings.json');
 const primeExe = path.join(os.homedir(), '.local', 'share', 'prime-agent', 'prime-agent.exe');
 const kernelPython = path.join(os.homedir(), '.prime', 'agent', 'kernel-venv', 'Scripts', 'python.exe');

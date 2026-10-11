@@ -36,9 +36,10 @@ const {
   PYTHON_RLM_HTML_SOURCE,
 } = require('./t3-prime-bridge');
 
-const originalAsar = 'C:/Users/Ak417ytrfg/AppData/Local/Programs/t3code/resources/server.asar';
-const backupAsar = 'C:/Users/Ak417ytrfg/AppData/Local/Programs/t3code/resources/server.asar.bak';
-const inspectDir = 'C:/Users/Ak417ytrfg/AppData/Local/Temp/opencode/t3-inspect';
+const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const originalAsar = path.join(localAppData, 'Programs', 't3code', 'resources', 'server.asar');
+const backupAsar = path.join(localAppData, 'Programs', 't3code', 'resources', 'server.asar.bak');
+const inspectDir = path.join(localAppData, 'Temp', 'opencode', 't3-inspect');
 const t3SettingsPath = path.join(os.homedir(), '.t3', 'userdata', 'settings.json');
 const rlmSourceInit = path.join(os.homedir(), '.local', 'share', 'prime-agent', 'prime-agent-runtime', 'src', 'rlm', '__init__.py');
 const rlmVenvInit = path.join(os.homedir(), '.prime', 'agent', 'kernel-venv', 'Lib', 'site-packages', 'rlm', '__init__.py');
@@ -358,13 +359,14 @@ function patchUserSettings(settingsFile) {
     parsed.providerInstances.pi.enabled = true;
   }
   const existingPrime = parsed.providerInstances.primeAgent;
+  const defaultPrimeExe = path.join(os.homedir(), '.local', 'share', 'prime-agent', 'prime-agent.exe');
   const targetPrime = {
     driver: 'pi',
     displayName: 'Prime Agent',
     accentColor: '#10b981',
     enabled: true,
     config: {
-      binaryPath: 'C:\\Users\\Ak417ytrfg\\.local\\share\\prime-agent\\prime-agent.exe',
+      binaryPath: existingPrime?.config?.binaryPath || defaultPrimeExe,
       ...(existingPrime?.config?.launchArgs !== undefined ? { launchArgs: existingPrime.config.launchArgs } : {}),
       customModels: existingPrime?.config?.customModels ?? [
         'openai/gpt-5.4',

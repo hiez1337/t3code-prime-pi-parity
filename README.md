@@ -12,10 +12,10 @@ The patcher injects a self-contained parity bridge into the T3 Code server bundl
 
 | Component | File Path | Responsibility |
 | :--- | :--- | :--- |
-| **Parity Bridge** | `F:\test\t3-prime-bridge.js` | Provides helper functions and adapter hooks for `PiAdapterV2`, `AcpAdapterV2`, and the Python `rlm` namespace. |
-| **Idempotent Patcher** | `F:\test\apply-t3-patch.js` | Extracts `server.asar`, applies server and client patches, validates syntax with `node --check`, and updates `rlm/__init__.py`. |
-| **Sync Script** | `F:\test\sync-patches.ps1` | Checks patch markers, refreshes `server.asar.bak` on upstream updates, applies patches, and runs integration tests. |
-| **Test Suite** | `F:\test\test-integration.mjs` | Verifies tool normalization, `ipython` unpacking, V2 event schemas, Python `rlm.html_render`, and live RPC handshakes. |
+| **Parity Bridge** | `./t3-prime-bridge.js` | Provides helper functions and adapter hooks for `PiAdapterV2`, `AcpAdapterV2`, and the Python `rlm` namespace. |
+| **Idempotent Patcher** | `./apply-t3-patch.js` | Extracts `server.asar`, applies server and client patches, validates syntax with `node --check`, and updates `rlm/__init__.py`. |
+| **Sync Script** | `./sync-patches.ps1` | Checks patch markers, refreshes `server.asar.bak` on upstream updates, applies patches, and runs integration tests. |
+| **Test Suite** | `./test-integration.mjs` | Verifies tool normalization, `ipython` unpacking, V2 event schemas, Python `rlm.html_render`, and live RPC handshakes. |
 
 ---
 
@@ -39,7 +39,7 @@ In `makePiAdapterV2`, the upgraded `emitToolItem` function normalizes `Pi` and `
 
 ## 3. Variant 2: `Prime Agent` (`prime-agent` / `pa`) Native Bridge
 
-Variant 2 registers `providerInstances.primeAgent` in `C:\Users\Ak417ytrfg\.t3\userdata\settings.json`. In `Settings -> Providers`, T3 Code displays `Prime Agent` with status `Authenticated · prime-agent`, version `v0.10.1-beta.8`, and a custom emerald vector icon.
+Variant 2 registers `providerInstances.primeAgent` in `~/.t3/userdata/settings.json`. In `Settings -> Providers`, T3 Code displays `Prime Agent` with status `Authenticated · prime-agent`, version `v0.10.1-beta.8`, and a custom emerald vector icon.
 
 Prime Agent executes code and file edits inside a single stateful IPython tool (`ipython`, titled `Python cell`). The `unpackPrimeIpythonCell` bridge inspects each cell and emits deterministic child turn items (`${toolCallId}:*`) alongside the parent cell:
 - **Unified File Diffs (`file_change`)**: Extracts `details.diffs`, `application/vnd.prime-agent.diff+json` attachments, and Python `edit(...)` calls into unified diffs with `changes: [{ operation: "edit", path }]`.
@@ -55,17 +55,17 @@ Prime Agent executes code and file edits inside a single stateful IPython tool (
 1. Run `sync-patches.ps1` to apply all T3 Code and Prime Agent RLM patches and execute the test suite:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File F:\test\sync-patches.ps1
+powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1
 ```
 
 2. Run `test-integration.mjs` directly to verify helper functions, bundle idempotency, Python RLM helpers, and live RPC responses:
 
 ```powershell
-node F:\test\test-integration.mjs
+node test-integration.mjs
 ```
 
 3. If you need to restore the unpatched `server.asar` backup, run `sync-patches.ps1` with `-RestoreBackup`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File F:\test\sync-patches.ps1 -RestoreBackup
+powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1 -RestoreBackup
 ```
