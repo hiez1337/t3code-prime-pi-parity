@@ -199,10 +199,22 @@ test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-c
   assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('thread.todos.updated'), 'EMIT_TOOL_ITEM_SOURCE uses V2 plan.updated instead of thread.todos.updated');
   assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('thread.proposed_plan.upserted'), 'EMIT_TOOL_ITEM_SOURCE uses V2 plan.updated instead of thread.proposed_plan.upserted');
   assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('mcp_tool_call'), 'EMIT_TOOL_ITEM_SOURCE uses V2 dynamic_tool instead of mcp_tool_call');
+  assert.ok(content.includes('const isPrime = snapshot.auth?.type === "prime-agent"'), 'applyProviderCompatibility intercepts Prime Agent to prevent false unsupported warning');
+  assert.ok(content.includes('versionAdvisory: {\n\t\t\t\tstatus: "current",'), 'enrichPiSnapshot prevents false update command for Prime Agent');
 
   const rePatched = patchBinCliContent(content);
   assert.equal(rePatched.changes, 0, 'second pass of patchBinCliContent must make 0 changes');
   assert.equal(rePatched.content, content, 'second pass output must be byte-for-byte identical');
+});
+
+test('Prime Agent compatibility advisory & version advisory are clean (no false >=1.0.0 warning)', () => {
+  const primeCachePath = path.join(os.homedir(), '.t3', 'caches', 'primeAgent.json');
+  if (fs.existsSync(primeCachePath)) {
+    const cacheObj = JSON.parse(fs.readFileSync(primeCachePath, 'utf8'));
+    assert.equal(cacheObj.compatibilityAdvisory, undefined, 'Prime Agent must have no unsupported compatibilityAdvisory');
+    assert.equal(cacheObj.versionAdvisory?.status, 'current', 'Prime Agent versionAdvisory status must be current');
+    assert.equal(cacheObj.versionAdvisory?.updateCommand, null, 'Prime Agent updateCommand must be null');
+  }
 });
 
 test('Repeat execution of apply-t3-patch.js on server.asar is idempotent and preserves archive integrity', () => {

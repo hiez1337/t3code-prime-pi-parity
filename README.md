@@ -47,6 +47,7 @@ Prime Agent executes code and file edits inside a single stateful IPython tool (
 - **File Reads and Shell Commands**: Extracts `read(...)` and `bash(...)` calls inside Python cells into native `Read` and `command_execution` cards.
 - **Goals and Subagents**: Maps `goal_update` (RPC) and `_meta["ai.primeintellect.prime-agent"].goal` (ACP) to `todo_list` plans, and maps `rlm_child_update` / `_meta.subagents` to `subagent` cards.
 - **Lifecycle and Windows Compatibility**: The bridge resolves `prime-agent.cmd` and `pa.cmd` shims to `prime-agent.exe`. It strips unsupported CLI flags, settles turns on `agent_end`, and falls back to `get_fork_messages`.
+- **Compatibility and Version Advisory**: The bridge validates Prime Agent semver against `>=0.10.0`. It intercepts `applyProviderCompatibility` and `enrichPiSnapshot` to prevent false Pi update notices.
 
 ---
 

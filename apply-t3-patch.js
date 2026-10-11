@@ -298,6 +298,22 @@ function patchBinCliContent(content) {
     changes++;
   }
 
+  // 12. Patch applyProviderCompatibility to eliminate false "Unsupported version (Use >=1.0.0)" popover for Prime Agent
+  const oldApplyComp = 'function applyProviderCompatibility(snapshot, policies, fallback) {\n\tconst { compatibilityAdvisory: _previous, ...base } = snapshot;\n\tif (!snapshot.enabled || !snapshot.installed) return base;';
+  const newApplyComp = 'function applyProviderCompatibility(snapshot, policies, fallback) {\n\tconst { compatibilityAdvisory: _previous, ...base } = snapshot;\n\tif (!snapshot.enabled || !snapshot.installed) return base;\n\tconst isPrime = snapshot.auth?.type === "prime-agent" || snapshot.auth?.label === "prime-agent" || snapshot.instanceId === "primeAgent" || /prime/i.test(snapshot.displayName ?? "");\n\tif (isPrime) {\n\t\tconst cleanVer = snapshot.version?.replace(/^v/, "");\n\t\tconst isSupported = Boolean(cleanVer && compareSemverVersions(cleanVer, "0.10.0") >= 0);\n\t\treturn isSupported ? base : {\n\t\t\t...base,\n\t\t\tcompatibilityAdvisory: {\n\t\t\t\tstatus: "unsupported",\n\t\t\t\tmessage: "This provider version is outside the supported range for this T3 Code release. Use >=0.10.0.",\n\t\t\t\trecommendedVersion: null,\n\t\t\t\trecommendedRange: ">=0.10.0"\n\t\t\t}\n\t\t};\n\t}';
+  if (content.includes(oldApplyComp) && !content.includes('const isPrime = snapshot.auth?.type === "prime-agent"')) {
+    content = content.replace(oldApplyComp, newApplyComp);
+    changes++;
+  }
+
+  // 13. Patch enrichPiSnapshot to suppress Pi npm update checks and false "update --self" commands for Prime Agent
+  const oldEnrichPi = 'const enrichPiSnapshot = (input) => {\n\tconst { snapshot, publishSnapshot } = input;\n\treturn enrichProviderSnapshotWithVersionAdvisory(';
+  const newEnrichPi = 'const enrichPiSnapshot = (input) => {\n\tconst { snapshot, publishSnapshot } = input;\n\tconst isPrime = snapshot.auth?.type === "prime-agent" || snapshot.auth?.label === "prime-agent" || snapshot.instanceId === "primeAgent" || /prime/i.test(snapshot.displayName ?? "");\n\tif (isPrime) {\n\t\treturn publishSnapshot({\n\t\t\t...snapshot,\n\t\t\tversionAdvisory: {\n\t\t\t\tstatus: "current",\n\t\t\t\tcurrentVersion: snapshot.version,\n\t\t\t\tlatestVersion: snapshot.version,\n\t\t\t\tupdateCommand: null,\n\t\t\t\tcanUpdate: false,\n\t\t\t\tcanInstallVersion: false,\n\t\t\t\tcheckedAt: snapshot.checkedAt ?? null,\n\t\t\t\tmessage: null\n\t\t\t}\n\t\t});\n\t}\n\treturn enrichProviderSnapshotWithVersionAdvisory(';
+  if (content.includes(oldEnrichPi) && !content.includes('status: "current",\n\t\t\t\tcurrentVersion: snapshot.version,')) {
+    content = content.replace(oldEnrichPi, newEnrichPi);
+    changes++;
+  }
+
   return { content, changes };
 }
 
@@ -459,6 +475,24 @@ async function runPatch() {
 
   const settingsChanged = patchUserSettings(t3SettingsPath);
   console.log(`T3 user settings.json updated=${settingsChanged}`);
+
+  const primeCachePath = path.join(os.homedir(), '.t3', 'caches', 'primeAgent.json');
+  if (fs.existsSync(primeCachePath)) {
+    try {
+      const cacheObj = JSON.parse(fs.readFileSync(primeCachePath, 'utf8'));
+      delete cacheObj.compatibilityAdvisory;
+      if (cacheObj.versionAdvisory) {
+        cacheObj.versionAdvisory.status = 'current';
+        cacheObj.versionAdvisory.message = null;
+        cacheObj.versionAdvisory.updateCommand = null;
+        cacheObj.versionAdvisory.canUpdate = false;
+      }
+      fs.writeFileSync(primeCachePath, JSON.stringify(cacheObj, null, 2) + '\n', 'utf8');
+      console.log('Cleaned cached Prime Agent advisory in ~/.t3/caches/primeAgent.json');
+    } catch (_err) {
+      // ignore
+    }
+  }
 }
 
 if (require.main === module) {
