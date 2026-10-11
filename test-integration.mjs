@@ -21,6 +21,7 @@ const {
   loadAsarModule,
   patchBinCliContent,
 } = require('./apply-t3-patch.js');
+import { analyzeT3Threads } from './analyze-thread-logs.mjs';
 
 const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
 const inspectBinCli = path.join(localAppData, 'Temp', 'opencode', 't3-inspect', 'apps', 'server', 'dist', 'binCli-CyxUejOW.mjs');
@@ -382,6 +383,17 @@ await (async () => {
     process.exitCode = 1;
   }
 })();
+
+test('Forensic log analyzer (analyze-thread-logs.mjs) inspects statev2.sqlite projection tables and provider logs', () => {
+  const report = analyzeT3Threads({ limit: 3 });
+  assert.ok(Array.isArray(report), 'analyzeT3Threads returns array of thread telemetry');
+  assert.ok(report.length > 0, 'at least 1 thread inspected in statev2.sqlite');
+  const first = report[0];
+  assert.equal(typeof first.threadId, 'string');
+  assert.equal(typeof first.turnsCount, 'number');
+  assert.equal(typeof first.itemsCount, 'number');
+  assert.equal(typeof first.itemTypeCounts, 'object');
+});
 
 console.log(`\nCompleted ${passed} integration checks.`);
 

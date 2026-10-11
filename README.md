@@ -16,6 +16,7 @@ The patcher injects a self-contained parity bridge into the T3 Code server bundl
 | **Idempotent Patcher** | `./apply-t3-patch.js` | Extracts `server.asar`, applies server and client patches, validates syntax with `node --check`, and updates `rlm/__init__.py`. |
 | **Sync Script** | `./sync-patches.ps1` | Checks patch markers, refreshes `server.asar.bak` on upstream updates, applies patches, and runs integration tests. |
 | **Test Suite** | `./test-integration.mjs` | Verifies tool normalization, `ipython` unpacking, V2 event schemas, Python `rlm.html_render`, and live RPC handshakes. |
+| **Log Analyzer** | `./analyze-thread-logs.mjs` | Queries `statev2.sqlite` and provider logs to verify emitted V2 turn items, plans, subagents, and token metrics. |
 
 ---
 
@@ -96,4 +97,10 @@ node test-integration.mjs
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1 -RestoreBackup
+```
+
+5. Run `analyze-thread-logs.mjs` to inspect live threads in `statev2.sqlite` after running chat tests:
+
+```powershell
+node analyze-thread-logs.mjs --provider primeAgent --limit 5
 ```
