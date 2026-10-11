@@ -38,8 +38,7 @@ if (Test-Path $OmpExe) {
     Write-Host "Detected Oh-My-Pi (omp): $ompVer ($OmpExe)" -ForegroundColor Gray
 }
 
-$asarText = [System.IO.File]::ReadAllText($ServerAsar)
-$hasBridgeMarker = $asarText.Contains("/* __T3_PRIME_PI_PARITY_BRIDGE__ */")
+$hasBridgeMarker = (node -e "const fs=require('fs');const fd=fs.openSync(process.argv[1],'r');const buf=Buffer.alloc(4*1024*1024);fs.readSync(fd,buf,0,buf.length,0);fs.closeSync(fd);console.log(buf.includes('/* __T3_PRIME_PI_PARITY_BRIDGE__ */'));" $ServerAsar).Trim() -eq "true"
 if (-not $hasBridgeMarker) {
     Write-Host "Unpatched T3 Code server.asar detected; refreshing backup at $BackupAsar..." -ForegroundColor Yellow
     Copy-Item -Path $ServerAsar -Destination $BackupAsar -Force
@@ -48,8 +47,7 @@ if (-not $hasBridgeMarker) {
 }
 
 if (Test-Path $RlmInitPy) {
-    $rlmText = [System.IO.File]::ReadAllText($RlmInitPy)
-    $hasRlmMarker = $rlmText.Contains("# __T3_PRIME_HTML_BRIDGE__")
+    $hasRlmMarker = (Select-String -Path $RlmInitPy -Pattern "# __T3_PRIME_HTML_BRIDGE__" -Quiet -SimpleMatch)
     Write-Host "Prime Agent RLM bridge marker status: $hasRlmMarker" -ForegroundColor Gray
 }
 

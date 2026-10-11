@@ -143,7 +143,7 @@ function patchBinCliContent(content) {
   // 4. Patch buildPiRpcLaunch + callers to filter unsupported flags for prime-agent
   const oldLaunchReturn = 'return {\n\t\targs,';
   const newLaunchReturn = 'const finalArgs = filterPrimeAgentLaunchArgs(args, isPrimeAgentBinary(input.binaryPath));\n\treturn {\n\t\targs: finalArgs,';
-  if (content.includes(oldLaunchReturn) && !content.includes('filterPrimeAgentLaunchArgs(args,')) {
+  if (content.includes(oldLaunchReturn) && !content.includes('const finalArgs = filterPrimeAgentLaunchArgs(')) {
     content = content.replace(oldLaunchReturn, newLaunchReturn);
     changes++;
   }
@@ -393,6 +393,7 @@ async function runPatch() {
     asar.extractAll(originalAsar, tempDir);
     const distDir = path.join(tempDir, 'apps', 'server', 'dist');
     const binCliFiles = fs.readdirSync(distDir).filter((f) => f.startsWith('binCli-') && f.endsWith('.mjs'));
+    let totalChanges = 0;
     for (const binCli of binCliFiles) {
       const p = path.join(distDir, binCli);
       const raw = fs.readFileSync(p, 'utf8');
@@ -401,6 +402,7 @@ async function runPatch() {
         console.log('Refreshed unpatched backup at:', backupAsar);
       }
       const { content, changes } = patchBinCliContent(raw);
+      totalChanges += changes;
       if (changes > 0) {
         fs.writeFileSync(p, content, 'utf8');
       }
@@ -418,17 +420,32 @@ async function runPatch() {
     }
     console.log(`Patched ${clientPatched} client asset file(s)`);
 
-    const newAsar = path.join(os.tmpdir(), `new-server-${Date.now()}.asar`);
-    await asar.createPackage(tempDir, newAsar);
-    try {
-      fs.copyFileSync(newAsar, originalAsar);
-      console.log('Updated live server.asar successfully.');
-    } catch (copyErr) {
-      const stagedAsar = path.join(__dirname, 'server.patched.asar');
-      fs.copyFileSync(newAsar, stagedAsar);
-      console.warn(`Live server.asar is locked by running T3 Code (${copyErr.code}); wrote staged package to ${stagedAsar}`);
-    } finally {
-      if (fs.existsSync(newAsar)) fs.unlinkSync(newAsar);
+    if (totalChanges === 0 && clientPatched === 0) {
+      console.log('Live server.asar is already fully patched (idempotent no-op).');
+    } else {
+      const newAsar = path.join(os.tmpdir(), `new-server-${Date.now()}.asar`);
+      const unpackPattern = '{**/@ff-labs/**/*.{dll,node},**/@napi-rs/**/*.node,**/@yuuang/**/*.node,**/node-pty/build/**/*.{node,dll,exe},**/node-pty/prebuilds/win32-x64/**/*.{node,dll,exe},**/node-pty/third_party/**/*.{node,dll,exe}}';
+      if (typeof asar.createPackageWithOptions === 'function') {
+        await asar.createPackageWithOptions(tempDir, newAsar, { unpack: unpackPattern });
+      } else {
+        await asar.createPackage(tempDir, newAsar, { unpack: unpackPattern });
+      }
+      const newUnpacked = newAsar + '.unpacked';
+      const originalUnpacked = originalAsar + '.unpacked';
+      try {
+        fs.copyFileSync(newAsar, originalAsar);
+        if (fs.existsSync(newUnpacked)) {
+          fs.cpSync(newUnpacked, originalUnpacked, { recursive: true, force: true });
+        }
+        console.log('Updated live server.asar and server.asar.unpacked successfully.');
+      } catch (copyErr) {
+        const stagedAsar = path.join(__dirname, 'server.patched.asar');
+        fs.copyFileSync(newAsar, stagedAsar);
+        console.warn(`Live server.asar is locked by running T3 Code (${copyErr.code}); wrote staged package to ${stagedAsar}`);
+      } finally {
+        if (fs.existsSync(newAsar)) fs.unlinkSync(newAsar);
+        if (fs.existsSync(newUnpacked)) fs.rmSync(newUnpacked, { recursive: true, force: true });
+      }
     }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

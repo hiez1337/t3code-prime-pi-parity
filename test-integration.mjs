@@ -204,6 +204,12 @@ test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-c
   assert.equal(rePatched.content, content, 'second pass output must be byte-for-byte identical');
 });
 
+test('Repeat execution of apply-t3-patch.js on server.asar is idempotent and preserves archive integrity', () => {
+  const result = cp.spawnSync('node', ['apply-t3-patch.js'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, `apply-t3-patch.js repeat run must exit 0: ${result.stderr}`);
+  assert.ok(result.stdout.includes('applied 0 patch group(s)'), 'repeat run must apply 0 patch groups');
+});
+
 test('Client assets & ~/.t3/userdata/settings.json are patched for Prime Agent', () => {
   const chatFiles = fs.readdirSync(inspectClientDir).filter((f) => f.startsWith('ChatGptUsageButton-') && f.endsWith('.js'));
   assert.ok(chatFiles.length > 0);
