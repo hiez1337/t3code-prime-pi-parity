@@ -368,11 +368,22 @@ function unpackPrimeIpythonCell(toolCallId, threadId, args, resultRecord, output
 \t\t\t\tinput: { html: htmlStr, title: ref.title, height: ref.height, uri: "xd://127.0.0.1/html_render" }
 \t\t\t});
 \t\t}
-\t\tif (/\\bgoal\\.(?:create|complete)\\s*\\(/.test(code) || /'goal':\\s*\\{/.test(outputText)) {
-\t\t\tconst objOutMatch = /'objective':\\s*'((?:\\\\'|[^'])*)'/.exec(outputText);
-\t\t\tconst objCodeMatch = /\\bgoal\\.create\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)/.exec(code);
-\t\t\tconst rawObj = (objOutMatch ? objOutMatch[1] : (objCodeMatch ? (objCodeMatch[1] ?? objCodeMatch[2] ?? objCodeMatch[4] ?? "") : "")).replace(/\\\\n/g, "\\n");
-\t\t\tconst isComplete = /\\bgoal\\.complete\\s*\\(/.test(code) || /'status':\\s*'complete/.test(outputText);
+\t\tif (/\\bgoal\\.(?:create|complete)\\s*\\(/.test(code) || /'goal':\\s*\\{/.test(outputText) || outputText.includes("__T3_GOAL_JSON__:")) {
+\t\t\tlet rawObj = "";
+\t\t\tlet isComplete = /\\bgoal\\.complete\\s*\\(/.test(code) || /'status':\\s*'complete/.test(outputText);
+\t\t\tconst goalJsonLines = outputText.split(/\\r?\\n/).filter((l) => l.startsWith("__T3_GOAL_JSON__:"));
+\t\t\tif (goalJsonLines.length > 0) {
+\t\t\t\ttry {
+\t\t\t\t\tconst parsedGoal = JSON.parse(goalJsonLines[goalJsonLines.length - 1].slice("__T3_GOAL_JSON__:".length));
+\t\t\t\t\tif (typeof parsedGoal?.objective === "string") rawObj = parsedGoal.objective;
+\t\t\t\t\tif (typeof parsedGoal?.status === "string" && parsedGoal.status.startsWith("complete")) isComplete = true;
+\t\t\t\t} catch (_e) {}
+\t\t\t}
+\t\t\tif (!rawObj) {
+\t\t\t\tconst objOutMatch = /'objective':\\s*'((?:\\\\'|[^'])*)'/.exec(outputText);
+\t\t\t\tconst objCodeMatch = /\\bgoal\\.create\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)/.exec(code);
+\t\t\t\trawObj = (objOutMatch ? objOutMatch[1] : (objCodeMatch ? (objCodeMatch[1] ?? objCodeMatch[2] ?? objCodeMatch[4] ?? "") : "")).replace(/\\\\n/g, "\\n");
+\t\t\t}
 \t\t\tif (rawObj.trim().length > 0) {
 \t\t\t\tconst goalTodo = primeGoalToTodoSteps({ goal: { objective: rawObj, status: isComplete ? "complete" : "active" } });
 \t\t\t\tif (goalTodo.steps.length > 0) {
@@ -387,15 +398,29 @@ function unpackPrimeIpythonCell(toolCallId, threadId, args, resultRecord, output
 \t\t\t}
 \t\t}
 \t\tconst spawnMatch = /\\brlm\\.spawn\\s*\\(\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)'''|(['"\`])([\\s\\S]*?)\\3)(?:[\\s\\S]*?\\bname\\s*=\\s*(['"\`])([^'"\`]+)\\5)?/.exec(code);
-\t\tif (spawnMatch) {
-\t\t\tconst taskPrompt = spawnMatch[1] ?? spawnMatch[2] ?? spawnMatch[4] ?? "Subagent task";
-\t\t\tconst subName = spawnMatch[6] ?? "rlm-subagent";
+\t\tif (spawnMatch || outputText.includes("__T3_SUBAGENT_JSON__:")) {
+\t\t\tlet taskPrompt = spawnMatch ? (spawnMatch[1] ?? spawnMatch[2] ?? spawnMatch[4] ?? "Subagent task") : "Subagent task";
+\t\t\tlet subName = spawnMatch ? (spawnMatch[6] ?? "rlm-subagent") : "rlm-subagent";
+\t\t\tlet cleanSubOut = "";
+\t\t\tconst subJsonLines = outputText.split(/\\r?\\n/).filter((l) => l.startsWith("__T3_SUBAGENT_JSON__:"));
+\t\t\tif (subJsonLines.length > 0) {
+\t\t\t\ttry {
+\t\t\t\t\tconst parsedSub = JSON.parse(subJsonLines[subJsonLines.length - 1].slice("__T3_SUBAGENT_JSON__:".length));
+\t\t\t\t\tif (typeof parsedSub?.name === "string" && parsedSub.name.length > 0) subName = parsedSub.name;
+\t\t\t\t\tif (typeof parsedSub?.prompt === "string" && parsedSub.prompt.length > 0) taskPrompt = parsedSub.prompt;
+\t\t\t\t\tif (typeof parsedSub?.answer === "string" && parsedSub.answer.length > 0) cleanSubOut = parsedSub.answer;
+\t\t\t\t} catch (_e) {}
+\t\t\t}
+\t\t\tif (!cleanSubOut) {
+\t\t\t\tconst nonNoiseLines = outputText.split(/\\r?\\n/).filter((l) => l.trim().length > 0 && !l.startsWith("__T3_") && !/^async def spawn/.test(l.trim()));
+\t\t\t\tcleanSubOut = nonNoiseLines.length > 0 ? nonNoiseLines[nonNoiseLines.length - 1] : outputText;
+\t\t\t}
 \t\t\titems.push({
 \t\t\t\tnativeItemId: \`\${toolCallId}:code-subagent:1\`,
 \t\t\t\tkind: "subagent",
 \t\t\t\tagent: subName,
 \t\t\t\ttask: taskPrompt,
-\t\t\t\toutput: outputText
+\t\t\t\toutput: cleanSubOut
 \t\t\t});
 \t\t}
 \t}
@@ -407,6 +432,8 @@ const EMIT_SUBAGENT_TASKS_SOURCE = `const emitSubagentTasks = fnUntraced(functio
 \t\t\t\tconst details = piRecordField(resultRecord, "details");
 \t\t\t\tlet items = [];
 \t\t\t\tturn.subagentPrompts = turn.subagentPrompts ?? new Map();
+\t\t\t\tturn.subagentChildThreads = turn.subagentChildThreads ?? new Set();
+\t\t\t\tturn.subagentResultProjected = turn.subagentResultProjected ?? new Set();
 \t\t\t\tconst rawResults = piRecordField(details, "results");
 \t\t\t\tif (Array.isArray(rawResults) && rawResults.length > 0) {
 \t\t\t\t\tfor (const [index, result] of rawResults.entries()) {
@@ -491,15 +518,123 @@ const EMIT_SUBAGENT_TASKS_SOURCE = `const emitSubagentTasks = fnUntraced(functio
 \t\t\t\t\tdriver: PI_PROVIDER,
 \t\t\t\t\tnativeItemId: toolCallId
 \t\t\t\t});
-\t\t\t\tfor (const item of items) {
+\t\t\t\tfor (const [index, item] of items.entries()) {
 \t\t\t\t\tconst subagentId = idAllocator.derive.nodeFromProviderItem({
 \t\t\t\t\t\tdriver: PI_PROVIDER,
 \t\t\t\t\t\tnativeItemId: item.nativeTaskId
+\t\t\t\t\t});
+\t\t\t\t\tconst childRootNodeId = idAllocator.derive.nodeFromProviderItem({
+\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\tnativeItemId: \`\${item.nativeTaskId}:child-root\`
+\t\t\t\t\t});
+\t\t\t\t\tconst childThreadId = idAllocator.derive.threadFromProviderThread({
+\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\tnativeThreadId: \`\${turn.turnInput.runId}:task:\${item.nativeTaskId}\`
 \t\t\t\t\t});
 \t\t\t\t\tconst startedAt = turn.toolStartedAt.get(item.nativeTaskId) ?? emittedAt;
 \t\t\t\t\tturn.toolStartedAt.set(item.nativeTaskId, startedAt);
 \t\t\t\t\tconst progress = !item.finished && item.outputText.length > 0 ? { progress: item.outputText.slice(0, 200) } : {};
 \t\t\t\t\tconst resultText = item.finished && item.outputText.length > 0 ? item.outputText.slice(0, 1e4) : null;
+\t\t\t\t\tif (!turn.subagentChildThreads.has(item.nativeTaskId)) {
+\t\t\t\t\t\tturn.subagentChildThreads.add(item.nativeTaskId);
+\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\ttype: "app_thread.created",
+\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\tappThread: makeSubagentChildThread({
+\t\t\t\t\t\t\t\tparentThread: turn.turnInput.appThread,
+\t\t\t\t\t\t\t\tchildThreadId,
+\t\t\t\t\t\t\t\tparentNodeId: subagentId,
+\t\t\t\t\t\t\t\tactiveProviderThreadId: null,
+\t\t\t\t\t\t\t\tproviderInstanceId: options.instanceId,
+\t\t\t\t\t\t\t\tmodelSelection: {
+\t\t\t\t\t\t\t\t\t...turn.turnInput.modelSelection,
+\t\t\t\t\t\t\t\t\t...(item.model ? { model: item.model } : {})
+\t\t\t\t\t\t\t\t},
+\t\t\t\t\t\t\t\ttitle: subagentThreadTitle({
+\t\t\t\t\t\t\t\t\tparentTitle: turn.turnInput.appThread.title,
+\t\t\t\t\t\t\t\t\ttitle: item.agent,
+\t\t\t\t\t\t\t\t\tprompt: item.task,
+\t\t\t\t\t\t\t\t\tordinal: index + 1
+\t\t\t\t\t\t\t\t}),
+\t\t\t\t\t\t\t\tnow: startedAt,
+\t\t\t\t\t\t\t\tcreatedBy: "agent",
+\t\t\t\t\t\t\t\tcreationSource: "provider"
+\t\t\t\t\t\t\t})
+\t\t\t\t\t\t});
+\t\t\t\t\t\tconst promptNativeId = \`\${item.nativeTaskId}:prompt\`;
+\t\t\t\t\t\tconst promptArtifacts = makeSubagentConversationArtifacts({
+\t\t\t\t\t\t\tsenderThreadId: turn.turnInput.threadId,
+\t\t\t\t\t\t\tmessageId: idAllocator.derive.messageFromProviderItem({
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tnativeItemId: promptNativeId
+\t\t\t\t\t\t\t}),
+\t\t\t\t\t\t\tturnItemId: idAllocator.derive.turnItemFromProviderItem({
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tnativeItemId: promptNativeId
+\t\t\t\t\t\t\t}),
+\t\t\t\t\t\t\tthreadId: childThreadId,
+\t\t\t\t\t\t\trootNodeId: childRootNodeId,
+\t\t\t\t\t\t\tproviderThreadId: null,
+\t\t\t\t\t\t\tproviderTurnId: null,
+\t\t\t\t\t\t\tnativeItemRef: providerRef(promptNativeId, "weak"),
+\t\t\t\t\t\t\trole: "user",
+\t\t\t\t\t\t\ttext: item.task || item.agent,
+\t\t\t\t\t\t\tordinal: 100,
+\t\t\t\t\t\t\tnow: startedAt
+\t\t\t\t\t\t});
+\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\ttype: "message.updated",
+\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\tmessage: promptArtifacts.message
+\t\t\t\t\t\t});
+\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\ttype: "turn_item.updated",
+\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\tturnItem: promptArtifacts.turnItem
+\t\t\t\t\t\t});
+\t\t\t\t\t}
+\t\t\t\t\tyield* emit({
+\t\t\t\t\t\ttype: "node.updated",
+\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\tnode: {
+\t\t\t\t\t\t\tid: subagentId,
+\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
+\t\t\t\t\t\t\trunId: turn.turnInput.runId,
+\t\t\t\t\t\t\tparentNodeId: turn.turnInput.rootNodeId,
+\t\t\t\t\t\t\trootNodeId: turn.turnInput.rootNodeId,
+\t\t\t\t\t\t\tkind: "subagent",
+\t\t\t\t\t\t\tstatus: item.status,
+\t\t\t\t\t\t\tcountsForRun: false,
+\t\t\t\t\t\t\tproviderThreadId: turn.turnInput.providerThread.id,
+\t\t\t\t\t\t\tproviderTurnId: turn.providerTurn.id,
+\t\t\t\t\t\t\tnativeItemRef: providerRef(item.nativeTaskId),
+\t\t\t\t\t\t\truntimeRequestId: null,
+\t\t\t\t\t\t\tcheckpointScopeId: null,
+\t\t\t\t\t\t\tstartedAt,
+\t\t\t\t\t\t\tcompletedAt: item.finished ? emittedAt : null
+\t\t\t\t\t\t}
+\t\t\t\t\t});
+\t\t\t\t\tyield* emit({
+\t\t\t\t\t\ttype: "node.updated",
+\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\tnode: {
+\t\t\t\t\t\t\tid: childRootNodeId,
+\t\t\t\t\t\t\tthreadId: childThreadId,
+\t\t\t\t\t\t\trunId: null,
+\t\t\t\t\t\t\tparentNodeId: null,
+\t\t\t\t\t\t\trootNodeId: childRootNodeId,
+\t\t\t\t\t\t\tkind: "root_turn",
+\t\t\t\t\t\t\tstatus: item.status,
+\t\t\t\t\t\t\tcountsForRun: false,
+\t\t\t\t\t\t\tproviderThreadId: null,
+\t\t\t\t\t\t\tproviderTurnId: null,
+\t\t\t\t\t\t\tnativeItemRef: providerRef(item.nativeTaskId),
+\t\t\t\t\t\t\truntimeRequestId: null,
+\t\t\t\t\t\t\tcheckpointScopeId: null,
+\t\t\t\t\t\t\tstartedAt,
+\t\t\t\t\t\t\tcompletedAt: item.finished ? emittedAt : null
+\t\t\t\t\t\t}
+\t\t\t\t\t});
 \t\t\t\t\tyield* emit({
 \t\t\t\t\t\ttype: "subagent.updated",
 \t\t\t\t\t\tdriver: PI_PROVIDER,
@@ -513,7 +648,7 @@ const EMIT_SUBAGENT_TASKS_SOURCE = `const emitSubagentTasks = fnUntraced(functio
 \t\t\t\t\t\t\tdriver: PI_PROVIDER,
 \t\t\t\t\t\t\tproviderInstanceId: options.instanceId,
 \t\t\t\t\t\t\tproviderThreadId: turn.turnInput.providerThread.id,
-\t\t\t\t\t\t\tchildThreadId: null,
+\t\t\t\t\t\t\tchildThreadId,
 \t\t\t\t\t\t\tnativeTaskRef: providerRef(item.nativeTaskId),
 \t\t\t\t\t\t\tprompt: item.task,
 \t\t\t\t\t\t\ttitle: item.agent,
@@ -539,12 +674,45 @@ const EMIT_SUBAGENT_TASKS_SOURCE = `const emitSubagentTasks = fnUntraced(functio
 \t\t\t\t\t\t\torigin: "provider_native",
 \t\t\t\t\t\t\tdriver: PI_PROVIDER,
 \t\t\t\t\t\t\tproviderInstanceId: options.instanceId,
-\t\t\t\t\t\t\tchildThreadId: null,
+\t\t\t\t\t\t\tchildThreadId,
 \t\t\t\t\t\t\tprompt: item.task,
 \t\t\t\t\t\t\t...progress,
 \t\t\t\t\t\t\tresult: resultText
 \t\t\t\t\t\t}
 \t\t\t\t\t});
+\t\t\t\t\tif (item.finished && resultText !== null && !turn.subagentResultProjected.has(item.nativeTaskId)) {
+\t\t\t\t\t\tturn.subagentResultProjected.add(item.nativeTaskId);
+\t\t\t\t\t\tconst resultNativeId = \`\${item.nativeTaskId}:result\`;
+\t\t\t\t\t\tconst resultArtifacts = makeSubagentConversationArtifacts({
+\t\t\t\t\t\t\tmessageId: idAllocator.derive.messageFromProviderItem({
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tnativeItemId: resultNativeId
+\t\t\t\t\t\t\t}),
+\t\t\t\t\t\t\tturnItemId: idAllocator.derive.turnItemFromProviderItem({
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tnativeItemId: resultNativeId
+\t\t\t\t\t\t\t}),
+\t\t\t\t\t\t\tthreadId: childThreadId,
+\t\t\t\t\t\t\trootNodeId: childRootNodeId,
+\t\t\t\t\t\t\tproviderThreadId: null,
+\t\t\t\t\t\t\tproviderTurnId: null,
+\t\t\t\t\t\t\tnativeItemRef: providerRef(resultNativeId, "weak"),
+\t\t\t\t\t\t\trole: "assistant",
+\t\t\t\t\t\t\ttext: resultText,
+\t\t\t\t\t\t\tordinal: 101,
+\t\t\t\t\t\t\tnow: emittedAt
+\t\t\t\t\t\t});
+\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\ttype: "message.updated",
+\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\tmessage: resultArtifacts.message
+\t\t\t\t\t\t});
+\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\ttype: "turn_item.updated",
+\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\tturnItem: resultArtifacts.turnItem
+\t\t\t\t\t\t});
+\t\t\t\t\t}
 \t\t\t\t}
 \t\t\t});`;
 
@@ -772,6 +940,66 @@ const EMIT_TOOL_ITEM_SOURCE = `const emitToolItem = fnUntraced(function* (turn, 
 \t\t\t\tif (currentToolName === "ipython") {
 \t\t\t\t\tconst unpacked = unpackPrimeIpythonCell(toolCallId, turn.turnInput.threadId, args, resultRecord, outputText, void 0);
 \t\t\t\t\tfor (const child of unpacked) {
+\t\t\t\t\t\tif (child.kind === "goal") {
+\t\t\t\t\t\t\tconst goalKey = \`goal:\${turn.providerTurn.id}\`;
+\t\t\t\t\t\t\tconst goalStartedAt = turn.toolStartedAt.get(goalKey) ?? startedAt;
+\t\t\t\t\t\t\tturn.toolStartedAt.set(goalKey, goalStartedAt);
+\t\t\t\t\t\t\tturn.planIds = turn.planIds ?? new Map();
+\t\t\t\t\t\t\tlet planId = turn.planIds.get(goalKey);
+\t\t\t\t\t\t\tif (!planId) {
+\t\t\t\t\t\t\t\tplanId = yield* idAllocator.allocate.plan({ threadId: turn.turnInput.threadId, runId: turn.turnInput.runId, driver: PI_PROVIDER });
+\t\t\t\t\t\t\t\tturn.planIds.set(goalKey, planId);
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\tturn.lastGoalSteps = child.steps.length > 0 ? child.steps : (turn.lastGoalSteps ?? []);
+\t\t\t\t\t\t\tconst stepsToEmit = child.allDone ? turn.lastGoalSteps.map((s) => ({ ...s, status: "completed" })) : turn.lastGoalSteps;
+\t\t\t\t\t\t\tconst goalStatus = child.allDone ? "completed" : "running";
+\t\t\t\t\t\t\tconst goalBase = baseItemFields(turn, goalKey, goalStartedAt, emittedAt);
+\t\t\t\t\t\t\tyield* emitItemNode(turn, goalKey, "todo_list", goalStatus, goalStartedAt, child.allDone ? emittedAt : null);
+\t\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\t\ttype: "plan.updated",
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tplan: {
+\t\t\t\t\t\t\t\t\tid: planId,
+\t\t\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
+\t\t\t\t\t\t\t\t\trunId: turn.turnInput.runId,
+\t\t\t\t\t\t\t\t\tnodeId: goalBase.nodeId,
+\t\t\t\t\t\t\t\t\tstatus: child.allDone ? "completed" : "active",
+\t\t\t\t\t\t\t\t\tkind: "todo_list",
+\t\t\t\t\t\t\t\t\tsteps: stepsToEmit,
+\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\t\ttype: "turn_item.updated",
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tturnItem: {
+\t\t\t\t\t\t\t\t\t...goalBase,
+\t\t\t\t\t\t\t\t\tstatus: goalStatus,
+\t\t\t\t\t\t\t\t\ttitle: "Todo List",
+\t\t\t\t\t\t\t\t\tcompletedAt: child.allDone ? emittedAt : null,
+\t\t\t\t\t\t\t\t\ttype: "todo_list",
+\t\t\t\t\t\t\t\t\tplanId,
+\t\t\t\t\t\t\t\t\tsteps: stepsToEmit,
+\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t\tcontinue;
+\t\t\t\t\t\t}
+\t\t\t\t\t\tif (child.kind === "subagent") {
+\t\t\t\t\t\t\tyield* emitSubagentTasks(turn, child.nativeItemId, {
+\t\t\t\t\t\t\t\tdetails: {
+\t\t\t\t\t\t\t\t\tresults: [{
+\t\t\t\t\t\t\t\t\t\tid: child.agent,
+\t\t\t\t\t\t\t\t\t\tagent: child.agent,
+\t\t\t\t\t\t\t\t\t\ttask: child.task,
+\t\t\t\t\t\t\t\t\t\tstatus: completed ? "completed" : "running",
+\t\t\t\t\t\t\t\t\t\tfinished: completed,
+\t\t\t\t\t\t\t\t\t\toutput: child.output || ""
+\t\t\t\t\t\t\t\t\t}]
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t}, completed, {}, "subagent");
+\t\t\t\t\t\t\tcontinue;
+\t\t\t\t\t\t}
 \t\t\t\t\t\tconst childBase = baseItemFields(turn, child.nativeItemId, startedAt, emittedAt);
 \t\t\t\t\t\tyield* emitItemNode(turn, child.nativeItemId, "tool_call", status, startedAt, completed ? emittedAt : null);
 \t\t\t\t\t\tconst childShared = { ...childBase, status, completedAt: completed ? emittedAt : null };
@@ -832,56 +1060,6 @@ const EMIT_TOOL_ITEM_SOURCE = `const emitToolItem = fnUntraced(function* (turn, 
 \t\t\t\t\t\t\t\t\t...(child.output ? { output: child.output } : {})
 \t\t\t\t\t\t\t\t}
 \t\t\t\t\t\t\t});
-\t\t\t\t\t\t} else if (child.kind === "goal") {
-\t\t\t\t\t\t\tconst goalKey = \`goal:\${turn.providerTurn.id}\`;
-\t\t\t\t\t\t\tturn.planIds = turn.planIds ?? new Map();
-\t\t\t\t\t\t\tlet planId = turn.planIds.get(goalKey);
-\t\t\t\t\t\t\tif (!planId) {
-\t\t\t\t\t\t\t\tplanId = yield* idAllocator.allocate.plan({ threadId: turn.turnInput.threadId, runId: turn.turnInput.runId, driver: PI_PROVIDER });
-\t\t\t\t\t\t\t\tturn.planIds.set(goalKey, planId);
-\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\tconst goalStatus = child.allDone ? "completed" : "running";
-\t\t\t\t\t\t\tyield* emit({
-\t\t\t\t\t\t\t\ttype: "plan.updated",
-\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\t\t\tplan: {
-\t\t\t\t\t\t\t\t\tid: planId,
-\t\t\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
-\t\t\t\t\t\t\t\t\trunId: turn.turnInput.runId,
-\t\t\t\t\t\t\t\t\tnodeId: childBase.nodeId,
-\t\t\t\t\t\t\t\t\tstatus: child.allDone ? "completed" : "active",
-\t\t\t\t\t\t\t\t\tkind: "todo_list",
-\t\t\t\t\t\t\t\t\tsteps: child.steps,
-\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
-\t\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\t});
-\t\t\t\t\t\t\tyield* emit({
-\t\t\t\t\t\t\t\ttype: "turn_item.updated",
-\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\t\t\tturnItem: {
-\t\t\t\t\t\t\t\t\t...childShared,
-\t\t\t\t\t\t\t\t\tstatus: goalStatus,
-\t\t\t\t\t\t\t\t\ttitle: "Goal",
-\t\t\t\t\t\t\t\t\tcompletedAt: child.allDone ? emittedAt : null,
-\t\t\t\t\t\t\t\t\ttype: "todo_list",
-\t\t\t\t\t\t\t\t\tplanId,
-\t\t\t\t\t\t\t\t\tsteps: child.steps,
-\t\t\t\t\t\t\t\t\t...(child.explanation ? { explanation: child.explanation } : {})
-\t\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\t});
-\t\t\t\t\t\t} else if (child.kind === "subagent") {
-\t\t\t\t\t\t\tyield* emitSubagentTasks(turn, child.nativeItemId, {
-\t\t\t\t\t\t\t\tdetails: {
-\t\t\t\t\t\t\t\t\tresults: [{
-\t\t\t\t\t\t\t\t\t\tid: child.agent,
-\t\t\t\t\t\t\t\t\t\tagent: child.agent,
-\t\t\t\t\t\t\t\t\t\ttask: child.task,
-\t\t\t\t\t\t\t\t\t\tstatus: completed ? "completed" : "running",
-\t\t\t\t\t\t\t\t\t\tfinished: completed,
-\t\t\t\t\t\t\t\t\t\toutput: child.output || ""
-\t\t\t\t\t\t\t\t\t}]
-\t\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\t}, completed, {}, "subagent");
 \t\t\t\t\t\t}
 \t\t\t\t\t}
 \t\t\t\t}
@@ -1038,7 +1216,10 @@ async def _t3_wrapped_host_request(request_type: str, payload: dict | None = Non
                 ]
             }
     try:
-        return await _t3_orig_host_request(request_type, payload)
+        res = await _t3_orig_host_request(request_type, payload)
+        if isinstance(res, dict) and request_type.startswith("goal.") and isinstance(res.get("goal"), dict):
+            print(f"__T3_GOAL_JSON__:{_t3_json.dumps(res['goal'])}")
+        return res
     except RuntimeError as exc:
         msg = str(exc)
         if "requires a daemon-backed session" not in msg and "no RLM child runtime" not in msg and "No direct RLM" not in msg:
@@ -1071,6 +1252,7 @@ async def _t3_wrapped_host_request(request_type: str, payload: dict | None = Non
                 "tool_use_count": 1,
                 "replied_since_task": True,
             }
+            print(f"__T3_SUBAGENT_JSON__:{_t3_json.dumps({'id': c_id, 'name': c_name, 'prompt': prompt_str, 'answer': ans, 'model': c_model})}")
             return {
                 "rlm_child_id": c_id,
                 "name": c_name,

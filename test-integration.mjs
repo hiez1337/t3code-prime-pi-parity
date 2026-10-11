@@ -226,7 +226,7 @@ console.log('\n2. Testing Patched Bundle & Idempotency...');
 
 test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-compliant events, and is 100% idempotent', () => {
   let content = fs.readFileSync(inspectBinCli, 'utf8');
-  if (!content.includes('rawCompErr === void 0') || !content.includes('child.kind === "goal"') || !content.includes('rawGoal.goal && typeof rawGoal.goal') || !content.includes('parentSession: resumeId')) {
+  if (!content.includes('rawCompErr === void 0') || !content.includes('turn.lastGoalSteps =') || !content.includes('turn.subagentChildThreads =') || !content.includes('parentSession: resumeId')) {
     const patched = patchBinCliContent(content);
     content = patched.content;
     fs.writeFileSync(inspectBinCli, content, 'utf8');
@@ -234,8 +234,11 @@ test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-c
   assert.ok(content.includes(BRIDGE_MARKER), 'bridge marker present');
   assert.ok(content.includes('parentSession: resumeId'), 'registerThread uses new_session with parentSession for Prime Agent to avoid Windows switch_session tokio panic');
   assert.ok(content.includes('turn.toolNames = turn.toolNames ?? new Map()'), 'emitToolItem replacement active in binCli');
-  assert.ok(content.includes('child.kind === "goal"'), 'emitToolItem unpacks goal items into plan.updated and todo_list');
-  assert.ok(content.includes('child.kind === "subagent"'), 'emitToolItem unpacks subagent items into emitSubagentTasks');
+  assert.ok(content.includes('turn.lastGoalSteps ='), 'emitToolItem consolidates goal items into a single turn-scoped todo_list node');
+  assert.ok(content.includes('turn.subagentChildThreads ='), 'emitSubagentTasks projects subagent child threads and conversation artifacts for Lineage and click inspection');
+  assert.ok(content.includes('makeSubagentChildThread({'), 'emitSubagentTasks emits app_thread.created via makeSubagentChildThread');
+  assert.ok(content.includes('makeSubagentConversationArtifacts({'), 'emitSubagentTasks emits prompt and result messages into subagent childThreadId');
+  assert.ok(content.includes('exposesSubagentThreadIds: true'), 'PiProviderCapabilitiesV2.subagents.exposesSubagentThreadIds enabled');
   assert.ok(content.includes('rawCompErr === void 0'), 'compaction_end handles short-session no-op compaction cleanly');
   assert.ok(content.includes('too short to compact'), 'compact response handles short-session message without failing turn');
   assert.ok(content.includes('supportsSkillInvocation: true'), 'PiProviderCapabilitiesV2.supportsSkillInvocation enabled');

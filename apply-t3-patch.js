@@ -99,7 +99,7 @@ function patchBinCliContent(content) {
       content = content.replace(anchor, `${BIN_CLI_BRIDGE_SOURCE}\n${anchor}`);
       changes++;
     }
-  } else if (content.includes(anchor) && (!content.includes('__T3_HTML_RENDER_JSON__:') || !content.includes('rawGoal.goal && typeof rawGoal.goal'))) {
+  } else if (content.includes(anchor) && (!content.includes('__T3_HTML_RENDER_JSON__:') || !content.includes('rawGoal.goal && typeof rawGoal.goal') || !content.includes('__T3_SUBAGENT_JSON__:'))) {
     const startIdx = content.indexOf(BRIDGE_MARKER);
     const endIdx = content.indexOf(anchor, startIdx);
     if (startIdx !== -1 && endIdx !== -1) {
@@ -182,6 +182,15 @@ function patchBinCliContent(content) {
       changes++;
     }
   }
+  const oldSubCaps = 'subagents: {\n\t\tsupportsSubagents: true,\n\t\texposesSubagentThreadIds: false,';
+  const newSubCaps = 'subagents: {\n\t\tsupportsSubagents: true,\n\t\texposesSubagentThreadIds: true,';
+  if (piCapsIdx !== -1) {
+    const tailSub = content.slice(piCapsIdx);
+    if (tailSub.includes(oldSubCaps)) {
+      content = content.slice(0, piCapsIdx) + tailSub.replace(oldSubCaps, newSubCaps);
+      changes++;
+    }
+  }
   const oldPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: false,';
   const newPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: true,';
   if (content.includes(oldPiPres)) {
@@ -198,14 +207,14 @@ function patchBinCliContent(content) {
   }
 
   // 6. Replace emitToolItem and emitSubagentTasks
-  if (!content.includes('turn.toolNames = turn.toolNames ?? new Map()') || !content.includes('child.kind === "goal"')) {
+  if (!content.includes('turn.toolNames = turn.toolNames ?? new Map()') || !content.includes('turn.lastGoalSteps =')) {
     const resTool = replaceFunctionBlock(content, 'const emitToolItem = fnUntraced(', EMIT_TOOL_ITEM_SOURCE);
     if (resTool.replaced) {
       content = resTool.content;
       changes++;
     }
   }
-  if (!content.includes('currentToolName === "task" || currentToolName === "subagent"')) {
+  if (!content.includes('currentToolName === "task" || currentToolName === "subagent"') || !content.includes('turn.subagentChildThreads =')) {
     const resSub = replaceFunctionBlock(content, 'const emitSubagentTasks = fnUntraced(', EMIT_SUBAGENT_TASKS_SOURCE);
     if (resSub.replaced) {
       content = resSub.content;
@@ -514,7 +523,7 @@ function patchClientAssets(clientAssetsDir) {
 function patchPythonRlmFile(pyPath) {
   if (!fs.existsSync(pyPath)) return false;
   let py = fs.readFileSync(pyPath, 'utf8');
-  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('if _t3_standalone_children:')) return false;
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('__T3_SUBAGENT_JSON__:')) return false;
   if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) {
     py = py.slice(0, py.indexOf('# __T3_PRIME_HTML_BRIDGE__')).trimEnd();
   }
