@@ -22,7 +22,7 @@ The patcher injects a self-contained parity bridge into the T3 Code server bundl
 
 ## 2. Variant 1: Native `Pi` (`omp`) Driver Parity
 
-Variant 1 upgrades `PiProviderCapabilitiesV2` and `PI_PRESENTATION` in `binCli-*.mjs` to match first-class T3 Code providers (`Codex`, `Claude`, `OpenCode`). Specifically, the patch enables `supportsSkillInvocation`, `supportsPlanMode`, `supportsSessionFork`, `supportsUsageReporting`, `supportsImageAttachments`, `planning.emitsPlanUpdated`, `planning.emitsTodoList`, `planning.emitsProposedPlan`, and `showInteractionModeToggle`.
+Variant 1 upgrades `PiProviderCapabilitiesV2` and `PI_PRESENTATION` in `binCli-*.mjs` to match first-class T3 Code providers (`Codex`, `Claude`, `OpenCode`). Specifically, the patch enables `supportsSkillInvocation`, `supportsPlanMode`, `supportsSessionFork`, `supportsUsageReporting`, `supportsImageAttachments`, `planning.emitsPlanUpdated`, `planning.emitsTodoList`, `planning.emitsProposedPlan`, `subagents.exposesSubagentThreadIds`, and `showInteractionModeToggle`.
 
 In `makePiAdapterV2`, the upgraded `emitToolItem` function normalizes `Pi` and `omp` tool calls into native `OrchestrationV2TurnItem` and `ProviderAdapterV2Event` payloads:
 
@@ -34,7 +34,7 @@ In `makePiAdapterV2`, the upgraded `emitToolItem` function normalizes `Pi` and `
 | `web_search`, `webfetch` | `web_search` (`patterns`, `results`) | Extracts search queries, result URLs, titles, and snippets into the native web search card. |
 | `read` | `dynamic_tool` (`toolName: "Read"`) | Formats file path and line range (`Loffset-end`) for the native T3 file-read card. |
 | `html_render`, `html_preview` | `dynamic_tool` (`output.htmlRender`) | Registers direct tools in `PI_T3_MCP_EXTENSION_SOURCE` with `xd://127.0.0.1` fallback URIs and `-html` attachments. |
-| `subagent`, `task`, `wait` | `subagent` (`origin: "provider_native"`) | Emits `subagent.updated` and `turn_item.updated` for both Pi `details.results` and `omp` `details.progress`. |
+| `subagent`, `task`, `wait` | `subagent` (`origin: "provider_native"`) | Emits `app_thread.created` (`makeSubagentChildThread`), `message.updated` (`makeSubagentConversationArtifacts`), `subagent.updated`, and `turn_item.updated` with `childThreadId` for **Lineage** panel and click-to-inspect parity with `Claude` and `Codex`. |
 
 ---
 
@@ -44,10 +44,10 @@ Variant 2 registers `providerInstances.primeAgent` in `~/.t3/userdata/settings.j
 
 Prime Agent executes code and file edits inside a single stateful IPython tool (`ipython`, titled `Python cell`). The `unpackPrimeIpythonCell` bridge inspects each cell and emits deterministic child turn items (`${toolCallId}:*`) alongside the parent cell:
 - **Unified File Diffs (`file_change`)**: Extracts `details.diffs`, `application/vnd.prime-agent.diff+json` attachments, and Python `edit(...)` calls into unified diffs with `changes: [{ operation: "edit", path }]`.
-- **Interactive HTML (`html_render`)**: Extracts `application/vnd.prime-agent.html-render+json` attachments and `rlm.html_render(...)` calls into `dynamic_tool` items with `output.htmlRender`.
-- **File Reads and Shell Commands**: Extracts `read(...)` and `bash(...)` calls inside Python cells into native `Read` and `command_execution` cards.
-- **Goals and Subagents**: Maps `goal_update` (RPC) and `_meta["ai.primeintellect.prime-agent"].goal` (ACP) to `todo_list` plans, and maps `rlm_child_update` / `_meta.subagents` to `subagent` cards.
-- **Lifecycle and Windows Compatibility**: The bridge resolves `prime-agent.cmd` and `pa.cmd` shims to `prime-agent.exe`. It strips unsupported CLI flags, settles turns on `agent_end`, and falls back to `get_fork_messages`.
+- **Interactive HTML (`html_render`)**: Extracts `application/vnd.prime-agent.html-render+json` attachments, `__T3_HTML_RENDER_JSON__` markers, and `rlm.html_render(...)` calls into `dynamic_tool` items with `output.htmlRender`.
+- **File Reads and Shell Commands**: Extracts `read(...)` (positional and keyword arguments) and `bash(...)` calls inside Python cells into native `Read` and `command_execution` cards, and auto-detects `PRIME_AGENT_BASH_SHELL` on Windows.
+- **Goals and Subagents**: Maps `goal_update` / `goal.create` / `goal.complete` (`__T3_GOAL_JSON__`) to a consolidated turn-scoped `todo_list` node (`goal:${turn.providerTurn.id}`), and maps `rlm_child_update` / `rlm.spawn` / `rlm.collect` (`__T3_SUBAGENT_JSON__`) to clickable `subagent` cards with dedicated child threads in the **Lineage** panel.
+- **Lifecycle and Windows Compatibility**: The bridge resolves `prime-agent.cmd` and `pa.cmd` shims to `prime-agent.exe`. It uses `new_session` (`parentSession`) instead of `switch_session` on Windows to avoid the `windows_pipe.rs` Tokio runtime panic, strips unsupported CLI flags, settles turns on `agent_end`, and falls back to `get_fork_messages`.
 - **Compatibility and Version Advisory**: The bridge validates Prime Agent semver against `>=0.10.0`. It intercepts `applyProviderCompatibility` and `enrichPiSnapshot` to prevent false Pi update notices.
 
 ---
