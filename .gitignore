@@ -1,0 +1,17 @@
+# Temporary ASAR extraction and backup artifacts
+*.asar
+*.asar.bak
+*.asar.orig
+*.bak
+*.orig
+*.tmp
+.t3-unpack/
+t3-inspect/
+
+# Node / Python / OS artifacts
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.log
