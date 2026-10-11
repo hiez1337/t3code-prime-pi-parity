@@ -1,283 +1,362 @@
+'use strict';
+
 const asar = require('C:/Users/Ak417ytrfg/AppData/Local/npm-cache/_npx/8b3f11f22d4db0c9/node_modules/asar');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const cp = require('child_process');
+const {
+  BRIDGE_MARKER,
+  BIN_CLI_BRIDGE_SOURCE,
+  EMIT_SUBAGENT_TASKS_SOURCE,
+  EMIT_TOOL_ITEM_SOURCE,
+  PRIME_RPC_EVENT_CASES_SOURCE,
+  ACP_PRIME_TOOL_HOOK_SOURCE,
+  ACP_PRIME_SESSION_INFO_HOOK_SOURCE,
+  PYTHON_RLM_HTML_SOURCE,
+} = require('./t3-prime-bridge');
 
 const originalAsar = 'C:/Users/Ak417ytrfg/AppData/Local/Programs/t3code/resources/server.asar';
 const backupAsar = 'C:/Users/Ak417ytrfg/AppData/Local/Programs/t3code/resources/server.asar.bak';
+const inspectDir = 'C:/Users/Ak417ytrfg/AppData/Local/Temp/opencode/t3-inspect';
+const t3SettingsPath = path.join(os.homedir(), '.t3', 'userdata', 'settings.json');
+const rlmSourceInit = path.join(os.homedir(), '.local', 'share', 'prime-agent', 'prime-agent-runtime', 'src', 'rlm', '__init__.py');
+const rlmVenvInit = path.join(os.homedir(), '.prime', 'agent', 'kernel-venv', 'Lib', 'site-packages', 'rlm', '__init__.py');
 
-(async () => {
-  try {
-    if (!fs.existsSync(originalAsar)) {
-      console.error('server.asar not found at:', originalAsar);
-      process.exit(1);
+function replaceFunctionBlock(content, prefix, newBlock) {
+  const startIdx = content.indexOf(prefix);
+  if (startIdx === -1) return { content, replaced: false };
+  const callStart = content.indexOf('(', startIdx);
+  if (callStart === -1) return { content, replaced: false };
+  let depth = 0;
+  let endIdx = -1;
+  let inStr = null;
+  let escaped = false;
+  for (let i = callStart; i < content.length; i++) {
+    const ch = content[i];
+    if (escaped) {
+      escaped = false;
+      continue;
     }
-    console.log('1. Extracting server.asar to tempDir...');
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 't3-patch-auto-'));
-    asar.extractAll(originalAsar, tempDir);
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (inStr) {
+      if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inStr = ch;
+      continue;
+    }
+    if (ch === '(' || ch === '{' || ch === '[') depth++;
+    else if (ch === ')' || ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+  if (endIdx === -1) return { content, replaced: false };
+  if (content[endIdx + 1] === ';') endIdx++;
+  return {
+    content: content.slice(0, startIdx) + newBlock + content.slice(endIdx + 1),
+    replaced: true,
+  };
+}
 
-    // 1. Patch binCli in apps/server/dist
+function patchBinCliContent(content) {
+  let changes = 0;
+
+  // 1. Inject self-contained bridge helper block once before buildPiRpcLaunch
+  if (!content.includes(BRIDGE_MARKER)) {
+    const anchor = 'function buildPiRpcLaunch(input) {';
+    if (content.includes(anchor)) {
+      content = content.replace(anchor, `${BIN_CLI_BRIDGE_SOURCE}\n${anchor}`);
+      changes++;
+    }
+  }
+
+  // 2. Patch validateLocalExecutable to allow prime-agent.cmd / pa.cmd shims on Windows
+  const oldValidateExec = 'const validateLocalExecutable = (command) => platform === "win32" && /\\.(?:cmd|bat)$/iu.test(command) ? fail$1(';
+  const newValidateExec = 'const validateLocalExecutable = (command) => platform === "win32" && /\\.(?:cmd|bat)$/iu.test(command) && !isPrimeAgentBinary(command) ? fail$1(';
+  if (content.includes(oldValidateExec)) {
+    content = content.replace(oldValidateExec, newValidateExec);
+    changes++;
+  }
+  const oldInspectCmd = 'const command = settings.commandPath.trim();';
+  const newInspectCmd = 'const command = resolvePrimeCmdShim(settings.commandPath.trim());';
+  if (content.includes(oldInspectCmd) && !content.includes('resolvePrimeCmdShim(settings.commandPath.trim())')) {
+    content = content.replace(oldInspectCmd, newInspectCmd);
+    changes++;
+  }
+
+  // 3. Patch buildPiRpcLaunch + callers to filter unsupported flags for prime-agent
+  const oldLaunchReturn = 'return {\n\t\targs,';
+  const newLaunchReturn = 'const finalArgs = filterPrimeAgentLaunchArgs(args, isPrimeAgentBinary(input.binaryPath));\n\treturn {\n\t\targs: finalArgs,';
+  if (content.includes(oldLaunchReturn) && !content.includes('filterPrimeAgentLaunchArgs(args,')) {
+    content = content.replace(oldLaunchReturn, newLaunchReturn);
+    changes++;
+  }
+  content = content.replace(
+    /buildPiRpcLaunch\(\{\s*launchArgs: resolvedLaunchArgs\.args,\s*environment: options\.environment,/g,
+    'buildPiRpcLaunch({\n\t\t\t\tbinaryPath: options.settings.binaryPath,\n\t\t\t\tlaunchArgs: resolvedLaunchArgs.args,\n\t\t\t\tenvironment: options.environment,'
+  );
+  content = content.replace(
+    /buildPiRpcLaunch\(\{\s*launchArgs,\s*environment,\s*mcpSession: void 0,/g,
+    'buildPiRpcLaunch({\n\t\tbinaryPath: piSettings.binaryPath,\n\t\tlaunchArgs,\n\t\tenvironment,\n\t\tmcpSession: void 0,'
+  );
+  content = content.replace(
+    /buildPiRpcLaunch\(\{\s*launchArgs: resolvedLaunchArgs\.args,\s*environment,\s*mcpSession: void 0,/g,
+    'buildPiRpcLaunch({\n\t\t\t\tbinaryPath: piSettings.binaryPath,\n\t\t\t\tlaunchArgs: resolvedLaunchArgs.args,\n\t\t\t\tenvironment,\n\t\t\t\tmcpSession: void 0,'
+  );
+
+  // 4. Patch PiProviderCapabilitiesV2 & PI_PRESENTATION
+  const oldPlanningCaps = 'planning: {\n\t\temitsPlanUpdated: false,\n\t\temitsTodoList: false,\n\t\temitsProposedPlan: false,\n\t\tsupportsStructuredQuestions: true,\n\t\tplanDeltasHaveItemIds: false\n\t},';
+  const newPlanningCaps = 'supportsSkillInvocation: true,\n\tsupportsPlanMode: true,\n\tsupportsSessionFork: true,\n\tsupportsUsageReporting: true,\n\tsupportsImageAttachments: true,\n\tplanning: {\n\t\temitsPlanUpdated: true,\n\t\temitsTodoList: true,\n\t\temitsProposedPlan: true,\n\t\tsupportsStructuredQuestions: true,\n\t\tplanDeltasHaveItemIds: true\n\t},';
+  if (content.includes(oldPlanningCaps)) {
+    content = content.replace(oldPlanningCaps, newPlanningCaps);
+    changes++;
+  }
+  const oldPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: false,';
+  const newPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: true,';
+  if (content.includes(oldPiPres)) {
+    content = content.replace(oldPiPres, newPiPres);
+    changes++;
+  }
+
+  // 5. Patch htmlRenderFromToolItem
+  const oldHtmlCheck = 'if (resolveT3McpToolId(item.toolName) !== "html_render") return void 0;';
+  const newHtmlCheck = 'const _tId = resolveT3McpToolId(item.toolName); if (_tId !== "html_render" && item.toolName !== "html_render" && !item.toolName.endsWith("__html_render")) return void 0;';
+  if (content.includes(oldHtmlCheck)) {
+    content = content.replace(oldHtmlCheck, newHtmlCheck);
+    changes++;
+  }
+
+  // 6. Replace emitToolItem and emitSubagentTasks
+  if (!content.includes('unpackPrimeIpythonCell(toolCallId,')) {
+    const resTool = replaceFunctionBlock(content, 'const emitToolItem = fnUntraced(', EMIT_TOOL_ITEM_SOURCE);
+    if (resTool.replaced) {
+      content = resTool.content;
+      changes++;
+    }
+  }
+  if (!content.includes('currentToolName === "task" || currentToolName === "subagent"')) {
+    const resSub = replaceFunctionBlock(content, 'const emitSubagentTasks = fnUntraced(', EMIT_SUBAGENT_TASKS_SOURCE);
+    if (resSub.replaced) {
+      content = resSub.content;
+      changes++;
+    }
+  }
+
+  // 7. Patch handleSessionEvent for Prime Agent RPC events (agent_end, goal_update, rlm_child_update) and pendingWake
+  const oldPendingWakeSettled = 'if (event["type"] === "agent_settled") yield* updateProviderSession("ready", null);';
+  const newPendingWakeSettled = 'if (event["type"] === "agent_settled" || event["type"] === "agent_end") yield* updateProviderSession("ready", null);';
+  if (content.includes(oldPendingWakeSettled)) {
+    content = content.replace(oldPendingWakeSettled, newPendingWakeSettled);
+    changes++;
+  }
+  if (!content.includes('case "rlm_child_update":')) {
+    const settleCaseRe = /case "agent_settled":[\s\S]*?yield\* scheduleSettleProbe\(turn, true\);\s*\}\s*return;/;
+    if (settleCaseRe.test(content)) {
+      content = content.replace(settleCaseRe, PRIME_RPC_EVENT_CASES_SOURCE);
+      changes++;
+    }
+  }
+
+  // 8. Patch t3.settle_probe to check sessionActions.queuedCount alongside pendingMessageCount
+  const oldProbeIdle = '(piRecordNumber(data, "pendingMessageCount") ?? 0) === 0';
+  const newProbeIdle = '(piRecordNumber(data, "pendingMessageCount") ?? piRecordNumber(piRecordField(data, "sessionActions"), "queuedCount") ?? 0) === 0';
+  if (content.includes(oldProbeIdle)) {
+    content = content.replace(oldProbeIdle, newProbeIdle);
+    changes++;
+  }
+
+  // 9. Patch listSessionEntries to fall back to get_fork_messages for Prime Agent RPC
+  const listEntriesAnchor = 'const listSessionEntries = (since, timeoutMs) =>';
+  if (content.includes(listEntriesAnchor) && !content.includes('get_fork_messages')) {
+    const listEntriesRe = /const listSessionEntries = \(since, timeoutMs\) => request\(\{[\s\S]*?\}\), orElseSucceed\(\(\) => null\)\);/;
+    if (listEntriesRe.test(content)) {
+      content = content.replace(
+        listEntriesRe,
+        `const listSessionEntries = (since, timeoutMs) => gen$1(function* () {\n\t\t\t\tconst primary = yield* request({\n\t\t\t\t\ttype: "get_entries",\n\t\t\t\t\t...since === null ? {} : { since }\n\t\t\t\t}, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst leafId = piRecordField(data, "leafId");\n\t\t\t\t\tconst entries = piSessionEntries(piRecordField(data, "entries"));\n\t\t\t\t\treturn entries !== null && (typeof leafId === "string" || leafId === null) ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t\tif (primary !== null) return primary;\n\t\t\t\treturn yield* request({ type: "get_fork_messages" }, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst msgs = piRecordField(data, "messages");\n\t\t\t\t\tif (!Array.isArray(msgs)) return null;\n\t\t\t\t\tconst rawEntries = msgs.map((m, idx) => ({\n\t\t\t\t\t\tid: String(m?.entryId ?? \`fork-\${idx}\`),\n\t\t\t\t\t\tparentId: idx > 0 ? String(msgs[idx - 1]?.entryId ?? \`fork-\${idx - 1}\`) : null,\n\t\t\t\t\t\ttype: "message",\n\t\t\t\t\t\trole: "user"\n\t\t\t\t\t}));\n\t\t\t\t\tconst entries = piSessionEntries(rawEntries);\n\t\t\t\t\tconst leafId = rawEntries.length > 0 ? rawEntries[rawEntries.length - 1].id : null;\n\t\t\t\t\treturn entries !== null ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t});`
+      );
+      changes++;
+    }
+  }
+
+  // 10. Patch checkPiProviderStatus version check & auth label for Prime Agent
+  const oldVerCheck = 'if (compareSemverVersions(version, "0.80.5") < 0) return buildServerProvider({';
+  const newVerCheck = 'const minVer = isPrimeAgentBinary(piSettings.binaryPath) ? "0.10.0" : "0.80.5";\n\tif (compareSemverVersions(version, minVer) < 0) return buildServerProvider({';
+  if (content.includes(oldVerCheck)) {
+    content = content.replace(oldVerCheck, newVerCheck);
+    changes++;
+  }
+  const oldAuthObj = 'auth: {\n\t\t\t\tstatus: discovery.authenticated ? "authenticated" : "unauthenticated",\n\t\t\t\ttype: "pi"\n\t\t\t},';
+  const newAuthObj = 'auth: {\n\t\t\t\tstatus: discovery.authenticated ? "authenticated" : "unauthenticated",\n\t\t\t\ttype: isPrimeAgentBinary(piSettings.binaryPath) ? "prime-agent" : "pi",\n\t\t\t\t...(isPrimeAgentBinary(piSettings.binaryPath) ? { label: "prime-agent" } : {})\n\t\t\t},';
+  if (content.includes(oldAuthObj)) {
+    content = content.replace(oldAuthObj, newAuthObj);
+    changes++;
+  }
+
+  // 11. Patch makeAcpAdapterV2 for Prime Agent ACP _meta
+  const acpToolAnchor = 'const mcpIdentity = extractMcpToolCallIdentity(toolCall, { embeddedTerminalCommands: embeddedTerminalCommands(context.nativeThreadId, toolCall.toolCallId) });';
+  if (content.includes(acpToolAnchor) && !content.includes('isPrimeIpythonAcp')) {
+    content = content.replace(acpToolAnchor, `${ACP_PRIME_TOOL_HOOK_SOURCE}\n\t\t\t\t${acpToolAnchor}`);
+    changes++;
+  }
+  const acpSessionInfoAnchor = 'if (context?.nativeThreadId === notification.sessionId) context.nativeMetadata = metadata;';
+  if (content.includes(acpSessionInfoAnchor) && !content.includes('primeSessionMeta')) {
+    content = content.replace(acpSessionInfoAnchor, `${acpSessionInfoAnchor}\n\t\t\t\t\t${ACP_PRIME_SESSION_INFO_HOOK_SOURCE}`);
+    changes++;
+  }
+
+  return { content, changes };
+}
+
+function patchClientAssets(clientAssetsDir) {
+  let patchedFiles = 0;
+  if (!fs.existsSync(clientAssetsDir)) return patchedFiles;
+  const files = fs.readdirSync(clientAssetsDir);
+  for (const file of files) {
+    const fullPath = path.join(clientAssetsDir, file);
+    if (file.startsWith('session-logic-') && file.endsWith('.js')) {
+      let c = fs.readFileSync(fullPath, 'utf8');
+      const clientRegex = /if\s*\(\s*([a-zA-Z0-9_$]+)\s*\(\s*e\.toolName\s*\)\s*!==\s*`html_render`\s*\)\s*return\s*;/;
+      if (clientRegex.test(c) && !c.includes('e.toolName!==`html_render`')) {
+        c = c.replace(clientRegex, (_m, fnName) => `let _t=${fnName}(e.toolName);if(_t!==\`html_render\`&&e.toolName!==\`html_render\`&&!e.toolName.endsWith(\`__html_render\`))return;`);
+        fs.writeFileSync(fullPath, c, 'utf8');
+        patchedFiles++;
+      }
+    }
+    if (file.startsWith('ChatGptUsageButton-') && file.endsWith('.js')) {
+      let c = fs.readFileSync(fullPath, 'utf8');
+      const iconTarget = 'r=k.get(e.driverKind)?.icon';
+      const iconReplacement = 'r=/prime/i.test(e.displayName??``)?{viewBox:`0 0 24 24`,fill:{light:`#059669`,dark:`#34d399`},paths:[{d:`M12 2L3 7v10l9 5 9-5V7l-9-5zm0 2.3L18.9 8 12 11.7 5.1 8 12 4.3zM5 9.8l6 3.3v6.6l-6-3.3V9.8zm8 9.9v-6.6l6-3.3v6.6l-6 3.3z`}]}:k.get(e.driverKind)?.icon';
+      if (c.includes(iconTarget) && !c.includes('M12 2L3 7v10l9 5')) {
+        c = c.replace(iconTarget, iconReplacement);
+        fs.writeFileSync(fullPath, c, 'utf8');
+        patchedFiles++;
+      }
+    }
+  }
+  return patchedFiles;
+}
+
+function patchPythonRlmFile(pyPath) {
+  if (!fs.existsSync(pyPath)) return false;
+  let py = fs.readFileSync(pyPath, 'utf8');
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) return false;
+  py = py.trimEnd() + '\n' + PYTHON_RLM_HTML_SOURCE;
+  if (py.includes('__all__ = [')) {
+    py = py.replace('__all__ = [', '__all__ = [\n    "html_render",\n    "html_preview",');
+  }
+  fs.writeFileSync(pyPath, py, 'utf8');
+  return true;
+}
+
+function patchUserSettings(settingsFile) {
+  if (!fs.existsSync(settingsFile)) return false;
+  const raw = fs.readFileSync(settingsFile, 'utf8');
+  const parsed = JSON.parse(raw);
+  parsed.providerInstances = parsed.providerInstances ?? {};
+  if (parsed.providerInstances.pi) {
+    parsed.providerInstances.pi.enabled = true;
+  }
+  const existingPrime = parsed.providerInstances.primeAgent;
+  const targetPrime = {
+    driver: 'pi',
+    displayName: 'Prime Agent',
+    accentColor: '#10b981',
+    enabled: true,
+    config: {
+      binaryPath: 'C:\\Users\\Ak417ytrfg\\.local\\share\\prime-agent\\prime-agent.exe',
+      ...(existingPrime?.config?.launchArgs !== undefined ? { launchArgs: existingPrime.config.launchArgs } : {}),
+      customModels: existingPrime?.config?.customModels ?? [
+        'openai/gpt-5.4',
+        'anthropic/claude-sonnet-4.6',
+        'google/gemini-2.5-pro',
+      ],
+    },
+  };
+  parsed.providerInstances.primeAgent = targetPrime;
+  const nextRaw = JSON.stringify(parsed, null, 2);
+  if (nextRaw.trim() === raw.trim()) return false;
+  fs.writeFileSync(settingsFile, nextRaw + '\n', 'utf8');
+  return true;
+}
+
+async function runPatch() {
+  if (!fs.existsSync(originalAsar)) {
+    throw new Error('server.asar not found at: ' + originalAsar);
+  }
+  if (!fs.existsSync(backupAsar)) {
+    fs.copyFileSync(originalAsar, backupAsar);
+    console.log('Created initial backup at:', backupAsar);
+  }
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 't3-patch-auto-'));
+  try {
+    asar.extractAll(originalAsar, tempDir);
     const distDir = path.join(tempDir, 'apps', 'server', 'dist');
-    const binCliFiles = fs.readdirSync(distDir).filter(f => f.startsWith('binCli-') && f.endsWith('.mjs'));
+    const binCliFiles = fs.readdirSync(distDir).filter((f) => f.startsWith('binCli-') && f.endsWith('.mjs'));
     for (const binCli of binCliFiles) {
       const p = path.join(distDir, binCli);
-      let content = fs.readFileSync(p, 'utf8');
-
-      // 1.1 Intercept xd:// writes
-      const targetPattern = 'if (toolName === "edit" || toolName === "write") {';
-      if (content.includes(targetPattern) && !content.includes('const piIsXd =')) {
-        const replacement = `if (toolName === "edit" || toolName === "write") {
-\t\t\t\t\tconst piCheckPath = piRecordString(args, "path") ?? piRecordString(args, "file_path") ?? "";
-\t\t\t\t\tconst piIsXd = typeof piCheckPath === "string" && piCheckPath.startsWith("xd://");
-\t\t\t\t\tif (piIsXd && toolName === "write") {
-\t\t\t\t\t\tconst piMatch = /^xd:\\/\\/(?:mcp__(?<server>[^\\/]+)__(?<tool>.+)|(?<rawTool>[^\\/]+))$/i.exec(piCheckPath);
-\t\t\t\t\t\tconst piResolvedName = piMatch?.groups?.rawTool ?? (piMatch?.groups?.server && piMatch?.groups?.tool ? \`\${piMatch.groups.server}.\${piMatch.groups.tool}\` : piCheckPath.replace("xd://", ""));
-\t\t\t\t\t\tconst piEffectiveName = (piMatch?.groups?.tool ?? piResolvedName).replace(/^[a-z0-9_-]+[.:]/i, "");
-\t\t\t\t\t\tlet piParsedInput = {};
-\t\t\t\t\t\ttry { const piRaw = piRecordString(args, "content"); if (piRaw) piParsedInput = JSON.parse(piRaw); } catch {}
-\t\t\t\t\t\tyield* emit({
-\t\t\t\t\t\t\ttype: "turn_item.updated",
-\t\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\t\tturnItem: {
-\t\t\t\t\t\t\t\t...shared,
-\t\t\t\t\t\t\t\ttitle: piCheckPath.replace("xd://", ""),
-\t\t\t\t\t\t\t\ttype: "dynamic_tool",
-\t\t\t\t\t\t\t\t...mcpToolPresentation$1({ toolName: piEffectiveName }),
-\t\t\t\t\t\t\t\ttoolName: piCheckPath.replace("xd://", ""),
-\t\t\t\t\t\t\t\tinput: piParsedInput,
-								...(typeof piToolOutput === "function" ? (() => { const _o = piToolOutput(resultRecord, piEffectiveName); return _o === undefined ? {} : { output: _o }; })() : (outputText.length > 0 ? { output: outputText } : {}))
-\t\t\t\t\t\t\t}
-\t\t\t\t\t\t});
-\t\t\t\t\t\treturn;
-\t\t\t\t\t}`;
-        content = content.replace(targetPattern, replacement);
-        console.log('2. Patched PiAdapterV2 xd:// interceptor in', binCli);
+      const raw = fs.readFileSync(p, 'utf8');
+      const { content, changes } = patchBinCliContent(raw);
+      if (changes > 0) {
+        fs.writeFileSync(p, content, 'utf8');
       }
-
-      // 1.2 Backend htmlRender
-      const oldCheck = 'if (resolveT3McpToolId(item.toolName) !== "html_render") return void 0;';
-      if (content.includes(oldCheck)) {
-        content = content.replace(oldCheck, 'const _tId = resolveT3McpToolId(item.toolName); if (_tId !== "html_render" && item.toolName !== "html_render" && !item.toolName.endsWith("__html_render")) return void 0;');
-        console.log('3. Patched htmlRenderFromToolItem in', binCli);
-      }
-
-      // 1.3 Subagent/task call trigger
-      const oldSubCall = 'if (toolName === "subagent") yield* emitSubagentTasks(turn, toolCallId, resultRecord, completed);';
-      const newSubCall = 'if (toolName === "subagent" || toolName === "task" || toolName === "wait") yield* emitSubagentTasks(turn, toolCallId, resultRecord, completed, args, toolName);';
-      if (content.includes(oldSubCall)) {
-        content = content.replace(oldSubCall, newSubCall);
-        console.log('4. Patched subagent/task dispatch call in', binCli);
-      }
-
-      // 1.4 Enhanced emitSubagentTasks function
-      const subDefPrefix = 'const emitSubagentTasks = fnUntraced(';
-      const startIdx = content.indexOf(subDefPrefix);
-      if (startIdx !== -1 && !content.includes('currentToolName === "task"')) {
-        const callStart = content.indexOf('(', startIdx);
-        let depth = 0;
-        let endIdx = -1;
-        for (let i = callStart; i < content.length; i++) {
-          if (content[i] === '(' || content[i] === '{') depth++;
-          else if (content[i] === ')' || content[i] === '}') {
-            depth--;
-            if (depth === 0) {
-              endIdx = i;
-              break;
-            }
-          }
-        }
-        if (content[endIdx + 1] === ';') endIdx++;
-
-        const newSubDef = `const emitSubagentTasks = fnUntraced(function* (turn, toolCallId, resultRecord, completed, args, currentToolName) {
-\t\t\t\tconst details = piRecordField(resultRecord, "details");
-\t\t\t\tlet items = [];
-\t\t\t\tturn.subagentPrompts = turn.subagentPrompts ?? new Map();
-
-\t\t\t\tconst rawResults = piRecordField(details, "results");
-\t\t\t\tif (Array.isArray(rawResults) && rawResults.length > 0 && (piRecordField(rawResults[0], "agent") || piRecordField(rawResults[0], "task"))) {
-\t\t\t\t\tfor (const [index, result] of rawResults.entries()) {
-\t\t\t\t\t\tconst agent = piRecordString(result, "agent") ?? "subagent";
-\t\t\t\t\t\tconst task = piRecordString(result, "task") ?? "";
-\t\t\t\t\t\tconst subName = piRecordString(result, "id") ?? piRecordString(result, "name") ?? (toolCallId + ":" + index);
-\t\t\t\t\t\tconst nativeTaskId = "subagent:" + subName;
-\t\t\t\t\t\tif (task) turn.subagentPrompts.set(nativeTaskId, task);
-\t\t\t\t\t\tconst finished = completed || piRecordField(result, "finished") === true;
-\t\t\t\t\t\tconst stopReason = piRecordString(result, "stopReason");
-\t\t\t\t\t\tconst interrupted = finished && stopReason === "aborted";
-\t\t\t\t\t\tconst failed = finished && !interrupted && ((piRecordNumber(result, "exitCode") ?? 0) !== 0 || stopReason === "error");
-\t\t\t\t\t\tconst status = interrupted ? "interrupted" : failed ? "failed" : finished ? "completed" : "running";
-\t\t\t\t\t\tconst outputText = piSubagentOutput(result);
-\t\t\t\t\t\titems.push({
-\t\t\t\t\t\t\tnativeTaskId,
-\t\t\t\t\t\t\tagent,
-\t\t\t\t\t\t\ttask: task || turn.subagentPrompts.get(nativeTaskId) || agent,
-\t\t\t\t\t\t\tmodel: piRecordString(result, "model") ?? null,
-\t\t\t\t\t\t\tstatus,
-\t\t\t\t\t\t\tfinished,
-\t\t\t\t\t\t\toutputText
-\t\t\t\t\t\t});
-\t\t\t\t\t}
-\t\t\t\t} else if (currentToolName === "task") {
-\t\t\t\t\tconst rawProgress = piRecordField(details, "progress");
-\t\t\t\t\tconst progressList = Array.isArray(rawProgress) ? rawProgress : [];
-\t\t\t\t\tconst rawTasks = piRecordField(args, "tasks");
-\t\t\t\t\tconst tasksArgs = Array.isArray(rawTasks) ? rawTasks : [];
-\t\t\t\t\tconst maxLen = Math.max(progressList.length, tasksArgs.length);
-\t\t\t\t\tfor (let index = 0; index < maxLen; index++) {
-\t\t\t\t\t\tconst p = progressList[index] ?? {};
-\t\t\t\t\t\tconst a = tasksArgs[index] ?? {};
-\t\t\t\t\t\tconst subName = piRecordString(p, "id") ?? piRecordString(a, "name") ?? piRecordString(p, "agent") ?? piRecordString(a, "agent") ?? (toolCallId + ":" + index);
-\t\t\t\t\t\tconst nativeTaskId = "subagent:" + subName;
-\t\t\t\t\t\tconst agent = piRecordString(p, "agent") ?? piRecordString(a, "agent") ?? subName;
-\t\t\t\t\t\tconst task = piRecordString(p, "assignment") ?? piRecordString(p, "task") ?? piRecordString(a, "task") ?? "";
-\t\t\t\t\t\tif (task) turn.subagentPrompts.set(nativeTaskId, task);
-\t\t\t\t\t\tconst statusRaw = piRecordString(p, "status") ?? (completed ? "completed" : "running");
-\t\t\t\t\t\tconst status = statusRaw === "completed" ? "completed" : statusRaw === "failed" ? "failed" : statusRaw === "interrupted" ? "interrupted" : "running";
-\t\t\t\t\t\tconst finished = status === "completed" || status === "failed" || status === "interrupted";
-\t\t\t\t\t\tconst model = piRecordString(p, "resolvedModel") ?? piRecordString(p, "modelRole") ?? null;
-\t\t\t\t\t\titems.push({
-\t\t\t\t\t\t\tnativeTaskId,
-\t\t\t\t\t\t\tagent: piRecordString(p, "id") ?? piRecordString(a, "name") ?? agent,
-\t\t\t\t\t\t\ttask: task || turn.subagentPrompts.get(nativeTaskId) || agent,
-\t\t\t\t\t\t\tmodel,
-\t\t\t\t\t\t\tstatus,
-\t\t\t\t\t\t\tfinished,
-\t\t\t\t\t\t\toutputText: ""
-\t\t\t\t\t\t});
-\t\t\t\t\t}
-\t\t\t\t} else if (currentToolName === "wait") {
-\t\t\t\t\tconst rawJobs = piRecordField(details, "jobs");
-\t\t\t\t\tif (Array.isArray(rawJobs)) {
-\t\t\t\t\t\tfor (const [index, job] of rawJobs.entries()) {
-\t\t\t\t\t\t\tconst subName = piRecordString(job, "id") ?? piRecordString(job, "label") ?? ("job-" + index);
-\t\t\t\t\t\t\tconst nativeTaskId = "subagent:" + subName;
-\t\t\t\t\t\t\tconst statusRaw = piRecordString(job, "status");
-\t\t\t\t\t\t\tconst finished = statusRaw === "completed" || statusRaw === "failed" || statusRaw === "cancelled" || statusRaw === "aborted";
-\t\t\t\t\t\t\tconst status = statusRaw === "completed" ? "completed" : statusRaw === "failed" ? "failed" : (statusRaw === "cancelled" || statusRaw === "aborted") ? "interrupted" : "running";
-\t\t\t\t\t\t\tconst model = piRecordString(job, "resolvedModel") ?? piRecordString(job, "resolvedModelIdentity") ?? null;
-\t\t\t\t\t\t\tconst outputText = piRecordString(job, "resultText") ?? "";
-\t\t\t\t\t\t\titems.push({
-\t\t\t\t\t\t\t\tnativeTaskId,
-\t\t\t\t\t\t\t\tagent: subName,
-\t\t\t\t\t\t\t\ttask: turn.subagentPrompts.get(nativeTaskId) || subName,
-\t\t\t\t\t\t\t\tmodel,
-\t\t\t\t\t\t\t\tstatus,
-\t\t\t\t\t\t\t\tfinished,
-\t\t\t\t\t\t\t\toutputText
-\t\t\t\t\t\t\t});
-\t\t\t\t\t\t}
-\t\t\t\t\t}
-\t\t\t\t}
-
-\t\t\t\tif (items.length === 0) return;
-\t\t\t\tconst emittedAt = yield* now;
-\t\t\t\tconst parentNodeId = idAllocator.derive.nodeFromProviderItem({
-\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\tnativeItemId: toolCallId
-\t\t\t\t});
-
-\t\t\t\tfor (const item of items) {
-\t\t\t\t\tconst subagentId = idAllocator.derive.nodeFromProviderItem({
-\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\tnativeItemId: item.nativeTaskId
-\t\t\t\t\t});
-\t\t\t\t\tconst startedAt = turn.toolStartedAt.get(item.nativeTaskId) ?? emittedAt;
-\t\t\t\t\tturn.toolStartedAt.set(item.nativeTaskId, startedAt);
-\t\t\t\t\tconst progress = !item.finished && item.outputText.length > 0 ? { progress: item.outputText.slice(0, 200) } : {};
-\t\t\t\t\tconst resultText = item.finished && item.outputText.length > 0 ? item.outputText.slice(0, 1e4) : null;
-
-\t\t\t\t\tyield* emit({
-\t\t\t\t\t\ttype: "subagent.updated",
-\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\tsubagent: {
-\t\t\t\t\t\t\tid: subagentId,
-\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
-\t\t\t\t\t\t\trunId: turn.turnInput.runId,
-\t\t\t\t\t\t\tparentNodeId,
-\t\t\t\t\t\t\torigin: "provider_native",
-\t\t\t\t\t\t\tcreatedBy: "agent",
-\t\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\t\tproviderInstanceId: options.instanceId,
-\t\t\t\t\t\t\tproviderThreadId: turn.turnInput.providerThread.id,
-\t\t\t\t\t\t\tchildThreadId: null,
-\t\t\t\t\t\t\tnativeTaskRef: providerRef(item.nativeTaskId),
-\t\t\t\t\t\t\tprompt: item.task,
-\t\t\t\t\t\t\ttitle: item.agent,
-\t\t\t\t\t\t\tmodel: item.model,
-\t\t\t\t\t\t\tstatus: item.status,
-\t\t\t\t\t\t\t...progress,
-\t\t\t\t\t\t\tresult: resultText,
-\t\t\t\t\t\t\tstartedAt,
-\t\t\t\t\t\t\tcompletedAt: item.finished ? emittedAt : null,
-\t\t\t\t\t\t\tupdatedAt: emittedAt
-\t\t\t\t\t\t}
-\t\t\t\t\t});
-\t\t\t\t\tyield* emit({
-\t\t\t\t\t\ttype: "turn_item.updated",
-\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\tturnItem: {
-\t\t\t\t\t\t\t...baseItemFields(turn, item.nativeTaskId, startedAt, emittedAt),
-\t\t\t\t\t\t\tstatus: item.status,
-\t\t\t\t\t\t\ttitle: item.agent,
-\t\t\t\t\t\t\tcompletedAt: item.finished ? emittedAt : null,
-\t\t\t\t\t\t\ttype: "subagent",
-\t\t\t\t\t\t\tsubagentId,
-\t\t\t\t\t\t\torigin: "provider_native",
-\t\t\t\t\t\t\tdriver: PI_PROVIDER,
-\t\t\t\t\t\t\tproviderInstanceId: options.instanceId,
-\t\t\t\t\t\t\tchildThreadId: null,
-\t\t\t\t\t\t\tprompt: item.task,
-\t\t\t\t\t\t\t...progress,
-\t\t\t\t\t\t\tresult: resultText
-\t\t\t\t\t\t}
-\t\t\t\t\t});
-\t\t\t\t}
-\t\t\t});`;
-
-        content = content.slice(0, startIdx) + newSubDef + content.slice(endIdx + 1);
-        console.log('5. Patched emitSubagentTasks definition in', binCli);
-      }
-
-      fs.writeFileSync(p, content, 'utf8');
-
-      // Syntax verification
-      cp.execSync('node --check "' + p + '"', { stdio: 'inherit' });
-    }
-
-    // 2. Patch client bundle
-    const clientAssetsDir = path.join(tempDir, 'apps', 'server', 'dist', 'client', 'assets');
-    if (fs.existsSync(clientAssetsDir)) {
-      const clientFiles = fs.readdirSync(clientAssetsDir).filter(f => f.startsWith('session-logic-') && f.endsWith('.js'));
-      for (const clientFile of clientFiles) {
-        const cpFile = path.join(clientAssetsDir, clientFile);
-        let clientContent = fs.readFileSync(cpFile, 'utf8');
-        const clientRegex = /if\s*\(\s*([a-zA-Z0-9_$]+)\s*\(\s*e\.toolName\s*\)\s*!==\s*`html_render`\s*\)\s*return\s*;/;
-        if (clientRegex.test(clientContent)) {
-          clientContent = clientContent.replace(clientRegex, (match, fnName) => {
-            return `let _t=${fnName}(e.toolName);if(_t!==\`html_render\`&&e.toolName!==\`html_render\`&&!e.toolName.endsWith(\`__html_render\`))return;`;
-          });
-          fs.writeFileSync(cpFile, clientContent, 'utf8');
-          console.log('6. Patched htmlRender in client bundle', clientFile);
-        }
+      cp.execSync(`node --check "${p}"`, { stdio: 'inherit' });
+      console.log(`Verified ${binCli} (applied ${changes} patch group(s))`);
+      if (fs.existsSync(inspectDir)) {
+        const inspectBin = path.join(inspectDir, 'apps', 'server', 'dist', binCli);
+        if (fs.existsSync(path.dirname(inspectBin))) fs.writeFileSync(inspectBin, content, 'utf8');
       }
     }
+    const clientAssetsDir = path.join(distDir, 'client', 'assets');
+    const clientPatched = patchClientAssets(clientAssetsDir);
+    if (fs.existsSync(inspectDir)) {
+      patchClientAssets(path.join(inspectDir, 'apps', 'server', 'dist', 'client', 'assets'));
+    }
+    console.log(`Patched ${clientPatched} client asset file(s)`);
 
-    console.log('7. Packing new server.asar...');
-    const newAsar = path.join(os.tmpdir(), 'new-server.asar');
+    const newAsar = path.join(os.tmpdir(), `new-server-${Date.now()}.asar`);
     await asar.createPackage(tempDir, newAsar);
-
-    console.log('8. Creating backup of current server.asar...');
-    fs.copyFileSync(originalAsar, backupAsar);
-
-    console.log('9. Overwriting server.asar...');
-    fs.copyFileSync(newAsar, originalAsar);
-    fs.unlinkSync(newAsar);
+    try {
+      fs.copyFileSync(newAsar, originalAsar);
+      console.log('Updated live server.asar successfully.');
+    } catch (copyErr) {
+      const stagedAsar = path.join(__dirname, 'server.patched.asar');
+      fs.copyFileSync(newAsar, stagedAsar);
+      console.warn(`Live server.asar is locked by running T3 Code (${copyErr.code}); wrote staged package to ${stagedAsar}`);
+    } finally {
+      if (fs.existsSync(newAsar)) fs.unlinkSync(newAsar);
+    }
+  } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 
-    console.log('ALL PATCHES APPLIED SUCCESSFULLY!');
-  } catch (err) {
+  const pySrcChanged = patchPythonRlmFile(rlmSourceInit);
+  const pyVenvChanged = patchPythonRlmFile(rlmVenvInit);
+  console.log(`Python rlm.__init__ patched (src=${pySrcChanged}, venv=${pyVenvChanged})`);
+
+  const settingsChanged = patchUserSettings(t3SettingsPath);
+  console.log(`T3 user settings.json updated=${settingsChanged}`);
+}
+
+if (require.main === module) {
+  runPatch().catch((err) => {
     console.error('Failed to apply patch:', err);
     process.exit(1);
-  }
-})();
+  });
+}
+
+module.exports = {
+  patchBinCliContent,
+  patchClientAssets,
+  patchPythonRlmFile,
+  patchUserSettings,
+  runPatch,
+};
