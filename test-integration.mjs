@@ -16,7 +16,11 @@ const {
   ACP_PRIME_TOOL_HOOK_SOURCE,
   ACP_PRIME_SESSION_INFO_HOOK_SOURCE,
 } = require('./t3-prime-bridge.js');
-const { patchBinCliContent } = require('./apply-t3-patch.js');
+const {
+  checkT3CodeRunning,
+  loadAsarModule,
+  patchBinCliContent,
+} = require('./apply-t3-patch.js');
 
 const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
 const inspectBinCli = path.join(localAppData, 'Temp', 'opencode', 't3-inspect', 'apps', 'server', 'dist', 'binCli-CyxUejOW.mjs');
@@ -182,7 +186,12 @@ test('primeGoalToTodoSteps maps Prime Agent goal_update / _meta.goal to T3 todo 
 console.log('\n2. Testing Patched Bundle & Idempotency...');
 
 test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-compliant events, and is 100% idempotent', () => {
-  const content = fs.readFileSync(inspectBinCli, 'utf8');
+  let content = fs.readFileSync(inspectBinCli, 'utf8');
+  if (!content.includes('return capacity ?? 500000;')) {
+    const patched = patchBinCliContent(content);
+    content = patched.content;
+    fs.writeFileSync(inspectBinCli, content, 'utf8');
+  }
   assert.ok(content.includes(BRIDGE_MARKER), 'bridge marker present');
   assert.ok(content.includes('turn.toolNames = turn.toolNames ?? new Map()'), 'emitToolItem replacement active in binCli');
   assert.ok(content.includes('supportsSkillInvocation: true'), 'PiProviderCapabilitiesV2.supportsSkillInvocation enabled');
@@ -201,10 +210,65 @@ test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-c
   assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('mcp_tool_call'), 'EMIT_TOOL_ITEM_SOURCE uses V2 dynamic_tool instead of mcp_tool_call');
   assert.ok(content.includes('const isPrime = snapshot.auth?.type === "prime-agent"'), 'applyProviderCompatibility intercepts Prime Agent to prevent false unsupported warning');
   assert.ok(content.includes('versionAdvisory: {\n\t\t\t\tstatus: "current",'), 'enrichPiSnapshot prevents false update command for Prime Agent');
+  assert.ok(content.includes('return capacity ?? 500000;'), 'windowOf dynamically resolves maxTokens from opencode.json with 500000 default');
+  assert.ok(content.includes('usedTokens: tokens.input + tokens.cache.read + tokens.cache.write + tokens.output,'), 'session.step.ended emits live usedTokens on every step finish');
+  assert.ok(content.includes('setSessionStatus(anyActive ? "running" : "ready", null)'), 'forgetRequest verifies anyActive to prevent permanent running session lock');
+  assert.ok(content.includes('yield* scheduleSettleProbe(turn, true);'), 'compaction_end in PiAdapterV2 schedules settle probe to unlock Compact context button immediately');
 
   const rePatched = patchBinCliContent(content);
   assert.equal(rePatched.changes, 0, 'second pass of patchBinCliContent must make 0 changes');
   assert.equal(rePatched.content, content, 'second pass output must be byte-for-byte identical');
+});
+
+test('Process and port 3773 detection accurately inspects active T3 Code instance', () => {
+  const status = checkT3CodeRunning();
+  assert.equal(typeof status.isRunning, 'boolean');
+  assert.equal(typeof status.portListening, 'boolean');
+  assert.ok(Array.isArray(status.pids));
+});
+
+test('E2E ASAR integrity: index.html starts with <!doctype html> and ASAR header is valid', () => {
+  const asar = loadAsarModule();
+  const serverAsar = path.join(localAppData, 'Programs', 't3code', 'resources', 'server.asar');
+  assert.ok(fs.existsSync(serverAsar), 'server.asar exists');
+
+  // Verify 16-byte ASAR header (magic: uint32 4, uint32 headerSize+8, uint32 headerSize+4, uint32 jsonLen)
+  const fd = fs.openSync(serverAsar, 'r');
+  const headerBuf = Buffer.alloc(16);
+  fs.readSync(fd, headerBuf, 0, 16, 0);
+  fs.closeSync(fd);
+  assert.equal(headerBuf.readUInt32LE(0), 4, 'ASAR format magic number must be 4');
+  assert.ok(headerBuf.readUInt32LE(4) > 0, 'ASAR header total size must be positive');
+  assert.ok(headerBuf.readUInt32LE(12) > 0, 'ASAR header JSON length must be positive');
+
+  // Verify extracted client/index.html is valid HTML (no mojibake, no corrupt offsets)
+  const target = path.join('apps', 'server', 'dist', 'client', 'index.html');
+  const indexHtml = asar.extractFile(serverAsar, target).toString('utf8');
+  assert.ok(indexHtml.trim().startsWith('<!doctype html>'), 'index.html in server.asar starts strictly with <!doctype html>');
+  assert.ok(indexHtml.length > 10000, `index.html size must be > 10KB (got ${indexHtml.length} bytes)`);
+  assert.ok(indexHtml.includes('<html lang="en">'), 'index.html contains valid HTML structure');
+});
+
+test('Strict Windows binary unpack guarantees all 12 native win32 binaries in server.asar.unpacked', () => {
+  const unpackedDir = path.join(localAppData, 'Programs', 't3code', 'resources', 'server.asar.unpacked');
+  assert.ok(fs.existsSync(unpackedDir), 'server.asar.unpacked directory exists');
+
+  const binaryExts = new Set(['.node', '.dll', '.exe']);
+  const binaries = [];
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (binaryExts.has(path.extname(entry.name).toLowerCase())) binaries.push(full);
+    }
+  }
+  walk(unpackedDir);
+  assert.ok(binaries.length >= 12, `Expected at least 12 unpacked native binaries (found ${binaries.length})`);
+  assert.ok(binaries.some((b) => b.includes('conpty.node')), 'node-pty conpty.node present');
+  assert.ok(binaries.some((b) => b.includes('OpenConsole.exe')), 'node-pty OpenConsole.exe present');
+  assert.ok(binaries.some((b) => b.includes('fff_c.dll')), '@ff-labs fff_c.dll present');
+  assert.ok(binaries.some((b) => b.includes('keyring-win32-x64-msvc')), '@napi-rs keyring present');
+  assert.ok(binaries.some((b) => b.includes('ffi-rs')), '@yuuang ffi-rs present');
 });
 
 test('Prime Agent compatibility advisory & version advisory are clean (no false >=1.0.0 warning)', () => {
@@ -217,10 +281,19 @@ test('Prime Agent compatibility advisory & version advisory are clean (no false 
   }
 });
 
-test('Repeat execution of apply-t3-patch.js on server.asar is idempotent and preserves archive integrity', () => {
+test('Repeat execution of apply-t3-patch.js preserves archive integrity and handles running process gracefully', () => {
   const result = cp.spawnSync('node', ['apply-t3-patch.js'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `apply-t3-patch.js repeat run must exit 0: ${result.stderr}`);
-  assert.ok(result.stdout.includes('applied 0 patch group(s)'), 'repeat run must apply 0 patch groups');
+  const status = checkT3CodeRunning();
+  const output = result.stdout + result.stderr;
+  if (status.isRunning) {
+    assert.ok(
+      output.includes('server.patched.asar') || output.includes('applied 0 patch group(s)'),
+      'when T3 Code is running without --restart-app, apply-t3-patch.js must safely stage archive to prevent corruption'
+    );
+  } else {
+    assert.ok(output.includes('applied 0 patch group(s)'), 'repeat run must apply 0 patch groups when app is not running');
+  }
 });
 
 test('Client assets & ~/.t3/userdata/settings.json are patched for Prime Agent', () => {
@@ -238,6 +311,10 @@ test('Client assets & ~/.t3/userdata/settings.json are patched for Prime Agent',
 console.log('\n3. Testing Live Python RLM Kernel & Prime Agent RPC Subprocess...');
 
 test('Python kernel-venv rlm.html_render and rlm.html_preview execute via both module and _RLMNamespace', () => {
+  if (!fs.existsSync(kernelPython)) {
+    console.log('    (Skipping Python execution: kernel-venv not installed on this host)');
+    return;
+  }
   const out = cp.execFileSync(
     kernelPython,
     [

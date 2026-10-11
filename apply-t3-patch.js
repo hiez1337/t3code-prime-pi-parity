@@ -314,6 +314,123 @@ function patchBinCliContent(content) {
     changes++;
   }
 
+  // 14. Patch windowOf in OpenCode2Adapter to dynamically resolve maxTokens (500k) from local opencode.json
+  const oldWindowOf = 'const directoryOf = (cwd) => cwd ?? host.paths.cwd;\n\t\tconst windowOf = (cwd, model) => contextWindows.get(directoryOf(cwd))?.get(model);';
+  const newWindowOf = `const directoryOf = (cwd) => cwd ?? host.paths.cwd;
+\t\tconst windowOf = (cwd, model) => {
+\t\t\tconst dir = directoryOf(cwd);
+\t\t\tlet capacity = contextWindows.get(dir)?.get(model);
+\t\t\tif (capacity === void 0 && model) capacity = contextWindows.get(dir)?.get(model.replace(/^[^\\/]+\\//, ""));
+\t\t\tif (capacity === void 0) {
+\t\t\t\ttry {
+\t\t\t\t\tconst cfgPath = Path$1.join(dir, "opencode.json");
+\t\t\t\t\tif (NFS.existsSync(cfgPath)) {
+\t\t\t\t\t\tconst cfg = JSON.parse(NFS.readFileSync(cfgPath, "utf8"));
+\t\t\t\t\t\tfor (const p of Object.values(cfg.provider ?? {})) {
+\t\t\t\t\t\t\tconst m = p.models?.[model] ?? p.models?.[model?.replace(/^[^\\/]+\\//, "")];
+\t\t\t\t\t\t\tif (m?.limit?.context || m?.limit?.input) {
+\t\t\t\t\t\t\t\tcapacity = m.limit.context ?? m.limit.input;
+\t\t\t\t\t\t\t\tbreak;
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t}
+\t\t\t\t\t}
+\t\t\t\t} catch (_err) {}
+\t\t\t}
+\t\t\treturn capacity ?? 500000;
+\t\t};`;
+  if (content.includes(oldWindowOf) && !content.includes('return capacity ?? 500000;')) {
+    content = content.replace(oldWindowOf, newWindowOf);
+    changes++;
+  }
+
+  // 15. Patch session.step.ended in OpenCode2Adapter for live token streaming
+  const oldStepEnded = 'case "session.step.ended":\n\t\t\t\tcase "session.step.failed": {\n\t\t\t\t\tconst tokens = event.data.tokens;\n\t\t\t\t\tif (tokens === void 0) return;\n\t\t\t\t\tturn.steps += 1;\n\t\t\t\t\tturn.lastStep = tokens;\n\t\t\t\t\tturn.usage.input += tokens.input + tokens.cache.read + tokens.cache.write;\n\t\t\t\t\tturn.usage.cached += tokens.cache.read;\n\t\t\t\t\tturn.usage.cacheWrite += tokens.cache.write;\n\t\t\t\t\tturn.usage.output += tokens.output + tokens.reasoning;\n\t\t\t\t\tturn.usage.reasoning += tokens.reasoning;\n\t\t\t\t\treturn;\n\t\t\t\t}';
+  const newStepEnded = `case "session.step.ended":
+\t\t\t\tcase "session.step.failed": {
+\t\t\t\t\tconst tokens = event.data.tokens;
+\t\t\t\t\tif (tokens === void 0) return;
+\t\t\t\t\tturn.steps += 1;
+\t\t\t\t\tturn.lastStep = tokens;
+\t\t\t\t\tturn.usage.input += tokens.input + tokens.cache.read + tokens.cache.write;
+\t\t\t\t\tturn.usage.cached += tokens.cache.read;
+\t\t\t\t\tturn.usage.cacheWrite += tokens.cache.write;
+\t\t\t\t\tturn.usage.output += tokens.output + tokens.reasoning;
+\t\t\t\t\tturn.usage.reasoning += tokens.reasoning;
+\t\t\t\t\tconst win = windowOf(turn.input.runtimePolicy.cwd, turn.input.modelSelection.model);
+\t\t\t\t\treturn yield* emitProviderTurn(state, turn, {
+\t\t\t\t\t\t...turn.providerTurn,
+\t\t\t\t\t\ttokenUsage: {
+\t\t\t\t\t\t\tusedTokens: tokens.input + tokens.cache.read + tokens.cache.write + tokens.output,
+\t\t\t\t\t\t\tmaxTokens: win ?? 500000,
+\t\t\t\t\t\t\tinputTokens: tokens.input + tokens.cache.read + tokens.cache.write,
+\t\t\t\t\t\t\tcachedInputTokens: tokens.cache.read,
+\t\t\t\t\t\t\toutputTokens: tokens.output,
+\t\t\t\t\t\t\treasoningOutputTokens: tokens.reasoning,
+\t\t\t\t\t\t\tupdatedAt: formatIso(yield* now)
+\t\t\t\t\t\t}
+\t\t\t\t\t});
+\t\t\t\t}`;
+  if (content.includes(oldStepEnded) && !content.includes('usedTokens: tokens.input + tokens.cache.read')) {
+    content = content.replace(oldStepEnded, newStepEnded);
+    changes++;
+  }
+
+  // 16. Patch forgetRequest in OpenCode2Adapter to verify anyActive before resetting to running
+  const oldForgetRequest = 'if (!pending.delete(entry.request.id)) return false;\n\t\t\tif (pending.size === 0 && session.status === "waiting") yield* setSessionStatus("running", null);';
+  const newForgetRequest = `if (!pending.delete(entry.request.id)) return false;
+\t\t\tconst anyActive = [...threads.values()].some((candidate) => candidate.subagent === void 0 && candidate.active !== void 0);
+\t\t\tif (pending.size === 0 && session.status === "waiting") yield* setSessionStatus(anyActive ? "running" : "ready", null);`;
+  if (content.includes(oldForgetRequest) && !content.includes('setSessionStatus(anyActive ? "running" : "ready", null)')) {
+    content = content.replace(oldForgetRequest, newForgetRequest);
+    changes++;
+  }
+
+  // 17. Patch session.compaction.ended in OpenCode2Adapter to clear lock status
+  const oldCompEnd = 'case "session.compaction.ended": return yield* emitCompaction(state, turn, "completed", event.data.text);';
+  const newCompEnd = `case "session.compaction.ended": {
+\t\t\t\t\tyield* emitCompaction(state, turn, "completed", event.data.text);
+\t\t\t\t\tconst anyActive = [...threads.values()].some((candidate) => candidate.subagent === void 0 && candidate.active !== void 0);
+\t\t\t\t\tif (!anyActive) {
+\t\t\t\t\t\tstate.providerThread = { ...state.providerThread, status: "idle", updatedAt: yield* now };
+\t\t\t\t\t\tyield* emit({ type: "provider_thread.updated", driver, providerThread: state.providerThread });
+\t\t\t\t\t\tyield* setSessionStatus(pending.size > 0 ? "waiting" : "ready", null);
+\t\t\t\t\t}
+\t\t\t\t\treturn;
+\t\t\t\t}`;
+  if (content.includes(oldCompEnd) && !content.includes('state.providerThread = { ...state.providerThread, status: "idle"')) {
+    content = content.replace(oldCompEnd, newCompEnd);
+    changes++;
+  }
+
+  // 18. Patch compaction_end in PiAdapterV2 to broadcast updated token count and force settle
+  const oldPiCompEnd = 'yield* emitCompaction(turn, compaction, "completed", {\n\t\t\t\t\t\t\t...summary === void 0 ? {} : { summary },\n\t\t\t\t\t\t\t...beforeTokenCount === void 0 ? {} : { beforeTokenCount },\n\t\t\t\t\t\t\t...afterTokenCount === void 0 ? {} : { afterTokenCount }\n\t\t\t\t\t\t});\n\t\t\t\t\t\tif (turn.settleWhenIdle || !turn.sawAgentActivity) yield* scheduleSettleProbe(turn, turn.settleWhenIdle);';
+  const newPiCompEnd = `yield* emitCompaction(turn, compaction, "completed", {
+\t\t\t\t\t\t\t...summary === void 0 ? {} : { summary },
+\t\t\t\t\t\t\t...beforeTokenCount === void 0 ? {} : { beforeTokenCount },
+\t\t\t\t\t\t\t...afterTokenCount === void 0 ? {} : { afterTokenCount }
+\t\t\t\t\t\t});
+\t\t\t\t\t\tif (afterTokenCount !== void 0 && afterTokenCount > 0) {
+\t\t\t\t\t\t\tturn.lastLiveUsedTokens = afterTokenCount;
+\t\t\t\t\t\t\tyield* emit({
+\t\t\t\t\t\t\t\ttype: "provider_turn.updated",
+\t\t\t\t\t\t\t\tdriver: PI_PROVIDER,
+\t\t\t\t\t\t\t\tthreadId: turn.turnInput.threadId,
+\t\t\t\t\t\t\t\tproviderTurn: {
+\t\t\t\t\t\t\t\t\t...turn.providerTurn,
+\t\t\t\t\t\t\t\t\ttokenUsage: {
+\t\t\t\t\t\t\t\t\t\tusedTokens: afterTokenCount,
+\t\t\t\t\t\t\t\t\t\tmaxTokens: contextWindow ?? 500000,
+\t\t\t\t\t\t\t\t\t\tupdatedAt: formatIso(yield* now)
+\t\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t}
+\t\t\t\t\t\tyield* scheduleSettleProbe(turn, true);`;
+  if (content.includes(oldPiCompEnd) && !content.includes('yield* scheduleSettleProbe(turn, true);')) {
+    content = content.replace(oldPiCompEnd, newPiCompEnd);
+    changes++;
+  }
+
   return { content, changes };
 }
 
@@ -398,6 +515,35 @@ function patchUserSettings(settingsFile) {
   return true;
 }
 
+function checkT3CodeRunning() {
+  let isRunning = false;
+  let pids = [];
+  try {
+    const tasklist = cp.execSync('tasklist /FO CSV /NH', { encoding: 'utf8' });
+    for (const line of tasklist.split('\n')) {
+      if (/t3 code/i.test(line)) {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const pid = parseInt(parts[1].replace(/"/g, ''), 10);
+          if (pid) pids.push(pid);
+        }
+        isRunning = true;
+      }
+    }
+  } catch (_e) {}
+
+  let portListening = false;
+  try {
+    const netstat = cp.execSync('netstat -ano', { encoding: 'utf8' });
+    if (/[:\.]3773\s+.*LISTENING/i.test(netstat)) {
+      portListening = true;
+      isRunning = true;
+    }
+  } catch (_e) {}
+
+  return { isRunning, portListening, pids };
+}
+
 async function runPatch() {
   if (!fs.existsSync(originalAsar)) {
     throw new Error('server.asar not found at: ' + originalAsar);
@@ -438,6 +584,9 @@ async function runPatch() {
     }
     console.log(`Patched ${clientPatched} client asset file(s)`);
 
+    const runningStatus = checkT3CodeRunning();
+    const shouldRestartApp = process.argv.includes('--restart-app') || process.argv.includes('-RestartApp');
+
     if (totalChanges === 0 && clientPatched === 0) {
       console.log('Live server.asar is already fully patched (idempotent no-op).');
     } else {
@@ -450,16 +599,45 @@ async function runPatch() {
       }
       const newUnpacked = newAsar + '.unpacked';
       const originalUnpacked = originalAsar + '.unpacked';
+      const stagedAsar = path.join(__dirname, 'server.patched.asar');
+      const stagedUnpacked = path.join(__dirname, 'server.patched.asar.unpacked');
+
       try {
-        fs.copyFileSync(newAsar, originalAsar);
-        if (fs.existsSync(newUnpacked)) {
-          fs.cpSync(newUnpacked, originalUnpacked, { recursive: true, force: true });
+        if (runningStatus.isRunning && !shouldRestartApp) {
+          fs.copyFileSync(newAsar, stagedAsar);
+          if (fs.existsSync(newUnpacked)) {
+            fs.cpSync(newUnpacked, stagedUnpacked, { recursive: true, force: true });
+          }
+          console.warn(`CAUTION: T3 Code is currently running (PID on port 3773). Overwriting server.asar while running corrupts archive offsets and breaks UI rendering. Wrote patched package to ${stagedAsar}. Close T3 Code or pass --restart-app (or sync-patches.ps1 -RestartApp) to apply automatically.`);
+        } else {
+          if (runningStatus.isRunning && shouldRestartApp) {
+            console.log('T3 Code is running. Gracefully stopping processes for safe replacement...');
+            try {
+              cp.execSync('taskkill /F /IM "T3 Code (Nightly).exe" /IM "T3 Code.exe"', { stdio: 'ignore' });
+            } catch (_e) {}
+            for (let i = 0; i < 20; i++) {
+              const check = checkT3CodeRunning();
+              if (!check.isRunning && !check.portListening) break;
+              await new Promise((r) => setTimeout(r, 250));
+            }
+          }
+          fs.copyFileSync(newAsar, originalAsar);
+          if (fs.existsSync(newUnpacked)) {
+            fs.cpSync(newUnpacked, originalUnpacked, { recursive: true, force: true });
+          }
+          console.log('Updated live server.asar and server.asar.unpacked successfully.');
+          if (fs.existsSync(stagedAsar)) fs.unlinkSync(stagedAsar);
+          if (fs.existsSync(stagedUnpacked)) fs.rmSync(stagedUnpacked, { recursive: true, force: true });
+
+          if (runningStatus.isRunning && shouldRestartApp) {
+            const t3Exe = path.join(path.dirname(path.dirname(originalAsar)), 'T3 Code (Nightly).exe');
+            if (fs.existsSync(t3Exe)) {
+              console.log(`Relaunching T3 Code: ${t3Exe}`);
+              const child = cp.spawn(t3Exe, [], { detached: true, stdio: 'ignore' });
+              child.unref();
+            }
+          }
         }
-        console.log('Updated live server.asar and server.asar.unpacked successfully.');
-      } catch (copyErr) {
-        const stagedAsar = path.join(__dirname, 'server.patched.asar');
-        fs.copyFileSync(newAsar, stagedAsar);
-        console.warn(`Live server.asar is locked by running T3 Code (${copyErr.code}); wrote staged package to ${stagedAsar}`);
       } finally {
         if (fs.existsSync(newAsar)) fs.unlinkSync(newAsar);
         if (fs.existsSync(newUnpacked)) fs.rmSync(newUnpacked, { recursive: true, force: true });
@@ -503,6 +681,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  checkT3CodeRunning,
+  loadAsarModule,
   patchBinCliContent,
   patchClientAssets,
   patchPythonRlmFile,

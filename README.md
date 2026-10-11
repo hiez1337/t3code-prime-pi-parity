@@ -51,21 +51,48 @@ Prime Agent executes code and file edits inside a single stateful IPython tool (
 
 ---
 
-## 4. Usage and Verification
+## 4. Archive Protection and Process Management
 
-1. Run `sync-patches.ps1` to apply all T3 Code and Prime Agent RLM patches and execute the test suite:
+Hot-overwriting `server.asar` while T3 Code runs corrupts internal archive offsets. The running Electron server serves mojibake or raw binary slices instead of HTML.
+
+The patch suite implements active process guards:
+- **Process and Port Detection**: The script checks for `T3 Code*.exe` processes and local port `3773`.
+- **Safe Staged Replacement**: If T3 Code is running without `-RestartApp`, the script writes `server.patched.asar`. It halts direct replacement to prevent corruption.
+- **Automated Restart Workflow**: If you supply `-RestartApp`, the script stops T3 Code processes. It writes `server.asar` atomically and restarts the application.
+- **Native Binary Preservation**: The unpack pattern extracts all 12 Windows native binaries (`node-pty`, `@ff-labs`, `@napi-rs`, `@yuuang`) into `server.asar.unpacked`.
+
+---
+
+## 5. Context Window and Live Token Synchronization
+
+The bridge ensures accurate context meter rendering and prompt compaction:
+- **Live Token Streaming**: `OpenCode2Adapter` emits `provider_turn.updated` on each step finish. The progress circle and percentage update in real time.
+- **Dynamic Context Limits**: `windowOf` resolves `maxTokens` from `opencode.json` (500,000 tokens). This stops drops to default 300,000 limits.
+- **Compaction Button Synchronization**: `PiAdapterV2` schedules a settle probe on `compaction_end`. `OpenCode2Adapter` clears waiting states to unlock compaction immediately.
+
+---
+
+## 6. Usage and Verification
+
+1. Run `sync-patches.ps1` to apply all patches and execute integration tests:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1
 ```
 
-2. Run `test-integration.mjs` directly to verify helper functions, bundle idempotency, Python RLM helpers, and live RPC responses:
+2. To stop T3 Code, replace the archive atomically, and restart automatically, pass `-RestartApp`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1 -RestartApp
+```
+
+3. Run `test-integration.mjs` directly to verify helper functions, archive integrity, and live RPC responses:
 
 ```powershell
 node test-integration.mjs
 ```
 
-3. If you need to restore the unpatched `server.asar` backup, run `sync-patches.ps1` with `-RestoreBackup`:
+4. If you must restore the unpatched `server.asar` backup, pass `-RestoreBackup`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\sync-patches.ps1 -RestoreBackup

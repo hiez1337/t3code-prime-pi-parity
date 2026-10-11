@@ -1,6 +1,7 @@
 param(
     [switch]$SkipTests,
-    [switch]$RestoreBackup
+    [switch]$RestoreBackup,
+    [switch]$RestartApp
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,16 @@ if ($RestoreBackup) {
 
 if (-not (Test-Path $ServerAsar)) {
     throw "T3 Code server.asar not found at: $ServerAsar"
+}
+
+$runningProcs = Get-Process "T3 Code*" -ErrorAction SilentlyContinue
+$portConn = Get-NetTCPConnection -LocalPort 3773 -ErrorAction SilentlyContinue
+if ($runningProcs -or $portConn) {
+    if ($RestartApp) {
+        Write-Host "T3 Code is running. -RestartApp requested; will stop processes, update archive, and restart." -ForegroundColor Cyan
+    } else {
+        Write-Warning "T3 Code is running (PID on port 3773). Hot-overwriting server.asar causes archive offset corruption. Patches will be staged to server.patched.asar. Pass -RestartApp to apply and restart automatically."
+    }
 }
 
 if (Test-Path $PrimeExe) {
@@ -52,7 +63,11 @@ if (Test-Path $RlmInitPy) {
 }
 
 Write-Host "Applying idempotent T3 Code + Prime Agent RLM patches..." -ForegroundColor Yellow
-& node (Join-Path $RepoRoot "apply-t3-patch.js")
+$applyArgs = @((Join-Path $RepoRoot "apply-t3-patch.js"))
+if ($RestartApp) {
+    $applyArgs += "--restart-app"
+}
+& node @applyArgs
 if ($LASTEXITCODE -ne 0) {
     throw "apply-t3-patch.js failed with exit code $LASTEXITCODE"
 }
