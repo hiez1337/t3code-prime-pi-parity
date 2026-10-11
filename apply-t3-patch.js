@@ -272,6 +272,18 @@ function patchBinCliContent(content) {
     content = content.replace(oldRollbackEntries, newRollbackEntries);
     changes = changes + 1;
   }
+  const oldSwitchSession = 'if (piRecordField(yield* lifecycleRequest(resumeId != null ? {\n\t\t\t\t\t\ttype: "switch_session",\n\t\t\t\t\t\tsessionPath: resumeId\n\t\t\t\t\t} : { type: "new_session" }), "cancelled") === true)';
+  const newSwitchSession = `if (piRecordField(yield* lifecycleRequest(resumeId != null && !isPrimeAgentBinary(options.settings.binaryPath) ? {
+\t\t\t\t\t\ttype: "switch_session",
+\t\t\t\t\t\tsessionPath: resumeId
+\t\t\t\t\t} : {
+\t\t\t\t\t\ttype: "new_session",
+\t\t\t\t\t\t...(resumeId != null ? { parentSession: resumeId } : {})
+\t\t\t\t\t}), "cancelled") === true)`;
+  if (content.includes(oldSwitchSession) && !content.includes('parentSession: resumeId')) {
+    content = content.replace(oldSwitchSession, newSwitchSession);
+    changes++;
+  }
   const oldRollbackStale = 'leafCursorStale = entriesData === void 0;';
   const newRollbackStale = 'leafCursorStale = entriesData == null;';
   if (content.includes(oldRollbackStale)) {
