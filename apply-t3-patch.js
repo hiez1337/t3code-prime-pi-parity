@@ -426,7 +426,7 @@ function patchBinCliContent(content) {
 \t\t\t\t\t\t\t});
 \t\t\t\t\t\t}
 \t\t\t\t\t\tyield* scheduleSettleProbe(turn, true);`;
-  if (content.includes(oldPiCompEnd) && !content.includes('yield* scheduleSettleProbe(turn, true);')) {
+  if (content.includes(oldPiCompEnd) && !content.includes('turn.lastLiveUsedTokens = afterTokenCount;')) {
     content = content.replace(oldPiCompEnd, newPiCompEnd);
     changes++;
   }
@@ -630,8 +630,14 @@ async function runPatch() {
           if (fs.existsSync(stagedUnpacked)) fs.rmSync(stagedUnpacked, { recursive: true, force: true });
 
           if (runningStatus.isRunning && shouldRestartApp) {
-            const t3Exe = path.join(path.dirname(path.dirname(originalAsar)), 'T3 Code (Nightly).exe');
-            if (fs.existsSync(t3Exe)) {
+            const t3Dir = path.dirname(path.dirname(originalAsar));
+            const candidateExes = [
+              path.join(t3Dir, 'T3 Code (Nightly).exe'),
+              path.join(t3Dir, 'T3 Code.exe'),
+              path.join(t3Dir, 't3code.exe'),
+            ];
+            const t3Exe = candidateExes.find((exe) => fs.existsSync(exe));
+            if (t3Exe) {
               console.log(`Relaunching T3 Code: ${t3Exe}`);
               const child = cp.spawn(t3Exe, [], { detached: true, stdio: 'ignore' });
               child.unref();

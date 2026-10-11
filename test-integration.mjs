@@ -187,7 +187,7 @@ console.log('\n2. Testing Patched Bundle & Idempotency...');
 
 test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-compliant events, and is 100% idempotent', () => {
   let content = fs.readFileSync(inspectBinCli, 'utf8');
-  if (!content.includes('return capacity ?? 500000;')) {
+  if (!content.includes('turn.lastLiveUsedTokens = afterTokenCount;')) {
     const patched = patchBinCliContent(content);
     content = patched.content;
     fs.writeFileSync(inspectBinCli, content, 'utf8');
@@ -213,7 +213,7 @@ test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-c
   assert.ok(content.includes('return capacity ?? 500000;'), 'windowOf dynamically resolves maxTokens from opencode.json with 500000 default');
   assert.ok(content.includes('usedTokens: tokens.input + tokens.cache.read + tokens.cache.write + tokens.output,'), 'session.step.ended emits live usedTokens on every step finish');
   assert.ok(content.includes('setSessionStatus(anyActive ? "running" : "ready", null)'), 'forgetRequest verifies anyActive to prevent permanent running session lock');
-  assert.ok(content.includes('yield* scheduleSettleProbe(turn, true);'), 'compaction_end in PiAdapterV2 schedules settle probe to unlock Compact context button immediately');
+  assert.ok(content.includes('turn.lastLiveUsedTokens = afterTokenCount;'), 'compaction_end in PiAdapterV2 updates live tokens and schedules settle probe');
 
   const rePatched = patchBinCliContent(content);
   assert.equal(rePatched.changes, 0, 'second pass of patchBinCliContent must make 0 changes');
