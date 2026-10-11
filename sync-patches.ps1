@@ -8,6 +8,7 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServerAsar = "$env:LOCALAPPDATA\Programs\t3code\resources\server.asar"
 $BackupAsar = "$env:LOCALAPPDATA\Programs\t3code\resources\server.asar.bak"
 $PrimeExe = "$env:USERPROFILE\.local\share\prime-agent\prime-agent.exe"
+$RlmInitPy = "$env:USERPROFILE\.local\share\prime-agent\prime-agent-runtime\src\rlm\__init__.py"
 $OmpExe = if (Test-Path "$env:LOCALAPPDATA\omp\omp.exe") { "$env:LOCALAPPDATA\omp\omp.exe" } else { "$env:USERPROFILE\.local\bin\omp.exe" }
 
 Write-Host "=== T3 Code Prime Agent & Pi/omp Parity Sync ===" -ForegroundColor Cyan
@@ -35,6 +36,21 @@ if (Test-Path $PrimeExe) {
 if (Test-Path $OmpExe) {
     $ompVer = & $OmpExe --version 2>&1
     Write-Host "Detected Oh-My-Pi (omp): $ompVer ($OmpExe)" -ForegroundColor Gray
+}
+
+$asarText = [System.IO.File]::ReadAllText($ServerAsar)
+$hasBridgeMarker = $asarText.Contains("/* __T3_PRIME_PI_PARITY_BRIDGE__ */")
+if (-not $hasBridgeMarker) {
+    Write-Host "Unpatched T3 Code server.asar detected; refreshing backup at $BackupAsar..." -ForegroundColor Yellow
+    Copy-Item -Path $ServerAsar -Destination $BackupAsar -Force
+} else {
+    Write-Host "Existing bridge marker detected in server.asar (idempotent sync mode)." -ForegroundColor Gray
+}
+
+if (Test-Path $RlmInitPy) {
+    $rlmText = [System.IO.File]::ReadAllText($RlmInitPy)
+    $hasRlmMarker = $rlmText.Contains("# __T3_PRIME_HTML_BRIDGE__")
+    Write-Host "Prime Agent RLM bridge marker status: $hasRlmMarker" -ForegroundColor Gray
 }
 
 Write-Host "Applying idempotent T3 Code + Prime Agent RLM patches..." -ForegroundColor Yellow

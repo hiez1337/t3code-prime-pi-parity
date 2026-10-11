@@ -1,69 +1,70 @@
-# T3 Code Provider Parity: Native `Pi` (`omp`) & `Prime Agent` (`prime-agent` / `pa`)
+# T3 Code Provider Parity: Native `Pi` (`omp`) and `Prime Agent`
 
-Full-parity integration and update-resilient patching suite for **T3 Code** (`pingdotgg/t3code`) supporting:
-1. **Variant 1 — Native `Pi` (`@earendil-works/pi-coding-agent` / `oh-my-pi` `omp`) Full Feature Parity** (`PiAdapterV2`)
-2. **Variant 2 — Native `Prime Agent` (`PrimeIntellect-ai/prime-agent` `0.10.1-beta.8`) Integration** (RPC, ACP, and Python `rlm` IPython Kernel Bridge)
+This repository provides a full-parity integration and update-resilient patching suite for **T3 Code** (`pingdotgg/t3code`). It enables two distinct provider variants:
+1. **Variant 1 (`PiAdapterV2`)**: Native `Pi` (`@earendil-works/pi-coding-agent` and `oh-my-pi` `omp`) full feature parity.
+2. **Variant 2 (`Prime Agent`)**: Native `PrimeIntellect-ai/prime-agent` (`0.10.1-beta.8`) integration across RPC, ACP, and the Python `rlm` IPython kernel.
 
 ---
 
 ## 1. Architecture Overview
 
-| Component | File / Target Path | Responsibility |
+The patcher injects a self-contained parity bridge into the T3 Code server bundle (`binCli-*.mjs`) and client bundle (`session-logic-*.js`, `ChatGptUsageButton-*.js`). All injected helpers avoid Rollup-mangled symbol suffixes so the patcher survives T3 Code nightly updates and `prime-agent update` runs.
+
+| Component | File Path | Responsibility |
 | :--- | :--- | :--- |
-| **Parity Bridge Module** | `F:\test\t3-prime-bridge.js` | Self-contained, Rollup-suffix-independent helper functions and adapter hooks for `PiAdapterV2`, `AcpAdapterV2`, and Python `rlm`. |
-| **Idempotent Patcher** | `F:\test\apply-t3-patch.js` | Extracts `server.asar`, applies backend (`binCli-*.mjs`) and client (`session-logic-*.js`, `ChatGptUsageButton-*.js`) patches, verifies syntax via `node --check`, repacks `server.asar`, patches `rlm/__init__.py`, and registers `primeAgent` in `~/.t3/userdata/settings.json`. |
-| **Update Sync Script** | `F:\test\sync-patches.ps1` | One-command PowerShell synchronization script for re-applying patches after T3 Code nightly updates or `prime-agent update`. |
-| **Integration Test Suite** | `F:\test\test-integration.mjs` | End-to-end verification of tool normalization, `ipython` cell unpacking, idempotency, Python `rlm.html_render`, and live `prime-agent --mode rpc` JSON-RPC handshake. |
+| **Parity Bridge** | `F:\test\t3-prime-bridge.js` | Provides helper functions and adapter hooks for `PiAdapterV2`, `AcpAdapterV2`, and the Python `rlm` namespace. |
+| **Idempotent Patcher** | `F:\test\apply-t3-patch.js` | Extracts `server.asar`, applies server and client patches, validates syntax with `node --check`, and updates `rlm/__init__.py`. |
+| **Sync Script** | `F:\test\sync-patches.ps1` | Checks patch markers, refreshes `server.asar.bak` on upstream updates, applies patches, and runs integration tests. |
+| **Test Suite** | `F:\test\test-integration.mjs` | Verifies tool normalization, `ipython` unpacking, V2 event schemas, Python `rlm.html_render`, and live RPC handshakes. |
 
 ---
 
-## 2. Feature Matrix
+## 2. Variant 1: Native `Pi` (`omp`) Driver Parity
 
-### Variant 1: Native `Pi` (`omp`) Driver Parity (`PiAdapterV2`)
-- **Provider Capabilities (`PiProviderCapabilitiesV2` & `PI_PRESENTATION`)**:
-  - Enables `supportsSkillInvocation: true`, `supportsPlanMode: true`, `supportsSessionFork: true`, `supportsUsageReporting: true`, `supportsImageAttachments: true`.
-  - Enables `planning.emitsPlanUpdated: true`, `planning.emitsTodoList: true`, `planning.emitsProposedPlan: true`, and `showInteractionModeToggle: true`.
-- **Rich Turn Item Normalization (`emitToolItem`)**:
-  - `todo_write` / `todo` (both flat `todos` and Oh-My-Pi `phases`) $\rightarrow$ `todo_list` turn item + `thread.todos.updated` event with strict `OrchestrationV2PlanStep` statuses (`"pending" | "running" | "completed"`).
-  - `exit_plan_mode` / `plan` / `submit_plan` $\rightarrow$ `proposed_plan` turn item + `thread.proposed_plan.upserted` event.
-  - `grep` / `find` / `glob` / `file_search` $\rightarrow$ `file_search` turn item with file/line/preview extraction.
-  - `web_search` / `fetch` $\rightarrow$ `web_search` turn item with query patterns and URL snippets.
-  - `read` $\rightarrow$ `dynamic_tool` (`toolName: "Read"`) for native T3 Code file-read card rendering.
-  - `html_render` / `html_preview` $\rightarrow$ `mcp_tool_call` with `xd://127.0.0.1` fallback URI and deterministic `-html` attachment files in `~/.t3/userdata/attachments`.
-  - `subagent` / `task` / `wait` $\rightarrow$ `subagent.updated` + `turn_item.updated` (`type: "subagent"`) supporting both Pi `details.results` and Oh-My-Pi `details.progress` / `details.jobs`.
+Variant 1 upgrades `PiProviderCapabilitiesV2` and `PI_PRESENTATION` in `binCli-*.mjs` to match first-class T3 Code providers (`Codex`, `Claude`, `OpenCode`). Specifically, the patch enables `supportsSkillInvocation`, `supportsPlanMode`, `supportsSessionFork`, `supportsUsageReporting`, `supportsImageAttachments`, `planning.emitsPlanUpdated`, `planning.emitsTodoList`, `planning.emitsProposedPlan`, and `showInteractionModeToggle`.
 
-### Variant 2: `Prime Agent` (`prime-agent` / `pa`) Native Bridge
-- **First-Class Provider Registration (`~/.t3/userdata/settings.json`)**:
-  - Registers `providerInstances.primeAgent` (`displayName: "Prime Agent"`, `accentColor: "#10b981"`, `binaryPath: "C:\\Users\\Ak417ytrfg\\.local\\share\\prime-agent\\prime-agent.exe"`).
-  - Displays `Authenticated · prime-agent`, version `v0.10.1-beta.8`, and a custom emerald vector icon in `Settings -> Providers`.
-- **Single-Tool (`ipython` / `Python cell`) Unpacking (`unpackPrimeIpythonCell`)**:
-  - Unpacks `details.diffs`, `application/vnd.prime-agent.diff+json` attachments, and Python `edit(path, old, new)` calls into native `file_change` turn items with unified diffs and `changes: [{ operation: "edit", path }]`.
-  - Unpacks `application/vnd.prime-agent.html-render+json` / `text/html` attachments and `rlm.html_render(...)` calls into native `html_render` preview cards.
-  - Unpacks `read(...)` and `bash(...)` calls inside `ipython` cells into native `Read` and `command_execution` cards using deterministic child item IDs (`${toolCallId}:*`).
-- **Subagents, Goals & Compaction (RPC + ACP)**:
-  - Maps `rlm_child_update` (RPC) and `_meta["ai.primeintellect.prime-agent"].subagents` (ACP) into live T3 Code `subagent` cards (`Subagent #N`).
-  - Maps `goal_update` (RPC) and `_meta["ai.primeintellect.prime-agent"].goal` (ACP) into `todo_list` / `thread.todos.updated` with token budget tracking.
-  - Handles `agent_end` alongside `agent_settled`, checks `sessionActions.queuedCount` in `t3.settle_probe`, falls back from `get_entries` to `get_fork_messages`, strips unsupported Pi CLI flags (`--extension`, `--no-extensions`, `--no-tools`, `--tools`), and resolves Windows `prime-agent.cmd` / `pa.cmd` shims in `validateLocalExecutable`.
-- **Python RLM Kernel Helpers (`rlm/__init__.py`)**:
-  - Adds `rlm.html_render(html, title="HTML Preview", height=480)` and `rlm.html_preview(...)` to both `prime-agent-runtime/src/rlm/__init__.py` and `kernel-venv/Lib/site-packages/rlm/__init__.py`.
+In `makePiAdapterV2`, the upgraded `emitToolItem` function normalizes `Pi` and `omp` tool calls into native `OrchestrationV2TurnItem` and `ProviderAdapterV2Event` payloads:
+
+| Tool Name | Emitted V2 Turn Item | Emitted V2 Event / Details |
+| :--- | :--- | :--- |
+| `todo_write`, `todo` | `todo_list` (`planId`, `steps`) | Emits `plan.updated` (`kind: "todo_list"`) with statuses normalized to `"pending" \| "running" \| "completed"`. |
+| `exit_plan_mode`, `plan` | `proposed_plan` (`planId`, `markdown`) | Emits `plan.updated` (`kind: "proposed_plan"`) and streams markdown to the T3 plan card. |
+| `grep`, `find`, `glob` | `file_search` (`pattern`, `results`) | Extracts file paths, line numbers, and code previews from ripgrep or glob output. |
+| `web_search`, `webfetch` | `web_search` (`patterns`, `results`) | Extracts search queries, result URLs, titles, and snippets into the native web search card. |
+| `read` | `dynamic_tool` (`toolName: "Read"`) | Formats file path and line range (`Loffset-end`) for the native T3 file-read card. |
+| `html_render`, `html_preview` | `dynamic_tool` (`output.htmlRender`) | Registers direct tools in `PI_T3_MCP_EXTENSION_SOURCE` with `xd://127.0.0.1` fallback URIs and `-html` attachments. |
+| `subagent`, `task`, `wait` | `subagent` (`origin: "provider_native"`) | Emits `subagent.updated` and `turn_item.updated` for both Pi `details.results` and `omp` `details.progress`. |
 
 ---
 
-## 3. Usage & Update Synchronization
+## 3. Variant 2: `Prime Agent` (`prime-agent` / `pa`) Native Bridge
 
-Apply or synchronize all patches idempotently after updating T3 Code or Prime Agent:
+Variant 2 registers `providerInstances.primeAgent` in `C:\Users\Ak417ytrfg\.t3\userdata\settings.json`. In `Settings -> Providers`, T3 Code displays `Prime Agent` with status `Authenticated · prime-agent`, version `v0.10.1-beta.8`, and a custom emerald vector icon.
+
+Prime Agent executes code and file edits inside a single stateful IPython tool (`ipython`, titled `Python cell`). The `unpackPrimeIpythonCell` bridge inspects each cell and emits deterministic child turn items (`${toolCallId}:*`) alongside the parent cell:
+- **Unified File Diffs (`file_change`)**: Extracts `details.diffs`, `application/vnd.prime-agent.diff+json` attachments, and Python `edit(...)` calls into unified diffs with `changes: [{ operation: "edit", path }]`.
+- **Interactive HTML (`html_render`)**: Extracts `application/vnd.prime-agent.html-render+json` attachments and `rlm.html_render(...)` calls into `dynamic_tool` items with `output.htmlRender`.
+- **File Reads and Shell Commands**: Extracts `read(...)` and `bash(...)` calls inside Python cells into native `Read` and `command_execution` cards.
+- **Goals and Subagents**: Maps `goal_update` (RPC) and `_meta["ai.primeintellect.prime-agent"].goal` (ACP) to `todo_list` plans, and maps `rlm_child_update` / `_meta.subagents` to `subagent` cards.
+- **Lifecycle and Windows Compatibility**: Resolves `prime-agent.cmd` and `pa.cmd` shims to `prime-agent.exe`, strips unsupported CLI flags, settles turns on `agent_end`, and falls back from `get_entries` to `get_fork_messages`.
+
+---
+
+## 4. Usage and Verification
+
+1. Run `sync-patches.ps1` to apply all T3 Code and Prime Agent RLM patches and execute the test suite:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File F:\test\sync-patches.ps1
 ```
 
-Run the automated integration test suite directly:
+2. Run `test-integration.mjs` directly to verify helper functions, bundle idempotency, Python RLM helpers, and live RPC responses:
 
 ```powershell
 node F:\test\test-integration.mjs
 ```
 
-Restore the original unpatched `server.asar` backup if needed:
+3. If you need to restore the unpatched `server.asar` backup, run `sync-patches.ps1` with `-RestoreBackup`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File F:\test\sync-patches.ps1 -RestoreBackup

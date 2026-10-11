@@ -120,6 +120,7 @@ test('unpackPrimeIpythonCell unpacks diffs, attachments, edit/read/bash/html_ren
     {
       code: [
         'edit("src/app.ts", "const a = 1;", "const a = 2;")',
+        'await edit(path="src/kw.ts", old_str="foo()", new_str="bar()")',
         'read("src/config.ts", 1, 25)',
         'bash("npm test")',
         'rlm.html_render("<div>Widget</div>", title="Dashboard")',
@@ -155,6 +156,11 @@ test('unpackPrimeIpythonCell unpacks diffs, attachments, edit/read/bash/html_ren
   assert.match(codeDiff.diffStr, /\-const a = 1;/);
   assert.match(codeDiff.diffStr, /\+const a = 2;/);
 
+  const kwDiff = unpacked.find((i) => i.fileName === 'src/kw.ts');
+  assert.equal(kwDiff.nativeItemId, 'cell-1:code-edit:2');
+  assert.match(kwDiff.diffStr, /\-foo\(\)/);
+  assert.match(kwDiff.diffStr, /\+bar\(\)/);
+
   const htmlItem = unpacked.find((i) => i.kind === 'html_render');
   assert.match(htmlItem.htmlRender.attachmentId, /-html$/);
   assert.equal(htmlItem.title, 'Dashboard');
@@ -174,18 +180,24 @@ test('primeGoalToTodoSteps maps Prime Agent goal_update / _meta.goal to T3 todo 
 
 console.log('\n2. Testing Patched Bundle & Idempotency...');
 
-test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks and is 100% idempotent', () => {
+test('Patched binCli bundle contains all Variant 1 and Variant 2 hooks, schema-compliant events, and is 100% idempotent', () => {
   const content = fs.readFileSync(inspectBinCli, 'utf8');
   assert.ok(content.includes(BRIDGE_MARKER), 'bridge marker present');
+  assert.ok(content.includes('turn.toolNames = turn.toolNames ?? new Map()'), 'emitToolItem replacement active in binCli');
   assert.ok(content.includes('supportsSkillInvocation: true'), 'PiProviderCapabilitiesV2.supportsSkillInvocation enabled');
   assert.ok(content.includes('emitsTodoList: true'), 'PiProviderCapabilitiesV2.planning.emitsTodoList enabled');
   assert.ok(content.includes('emitsProposedPlan: true'), 'PiProviderCapabilitiesV2.planning.emitsProposedPlan enabled');
   assert.ok(content.includes('showInteractionModeToggle: true'), 'PI_PRESENTATION.showInteractionModeToggle enabled');
+  assert.ok(content.includes('"orchestrator_capabilities", "delegate_task", "task_status", "html_render", "html_preview"'), 'PI_T3_MCP_EXTENSION_SOURCE directTools includes html_render and html_preview');
   assert.ok(content.includes('case "rlm_child_update":'), 'Prime Agent rlm_child_update RPC handler present');
   assert.ok(content.includes('case "goal_update":'), 'Prime Agent goal_update RPC handler present');
   assert.ok(content.includes('get_fork_messages'), 'Prime Agent get_fork_messages fallback present');
+  assert.ok(content.includes('message: { role: "user" }'), 'get_fork_messages maps message.role = user for piSessionEntries');
   assert.ok(content.includes('isPrimeIpythonAcp'), 'Prime Agent ACP ipython hook present');
   assert.ok(content.includes('primeSessionMeta'), 'Prime Agent ACP session_info_update hook present');
+  assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('thread.todos.updated'), 'EMIT_TOOL_ITEM_SOURCE uses V2 plan.updated instead of thread.todos.updated');
+  assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('thread.proposed_plan.upserted'), 'EMIT_TOOL_ITEM_SOURCE uses V2 plan.updated instead of thread.proposed_plan.upserted');
+  assert.ok(!EMIT_TOOL_ITEM_SOURCE.includes('mcp_tool_call'), 'EMIT_TOOL_ITEM_SOURCE uses V2 dynamic_tool instead of mcp_tool_call');
 
   const rePatched = patchBinCliContent(content);
   assert.equal(rePatched.changes, 0, 'second pass of patchBinCliContent must make 0 changes');
@@ -206,17 +218,23 @@ test('Client assets & ~/.t3/userdata/settings.json are patched for Prime Agent',
 
 console.log('\n3. Testing Live Python RLM Kernel & Prime Agent RPC Subprocess...');
 
-test('Python kernel-venv rlm.html_render and rlm.html_preview execute and return valid attachment payload', () => {
+test('Python kernel-venv rlm.html_render and rlm.html_preview execute via both module and _RLMNamespace', () => {
   const out = cp.execFileSync(
     kernelPython,
-    ['-c', 'import json, rlm; print(json.dumps(rlm.html_render("<h1>Hello T3</h1>", title="Live RLM", height=360)))'],
+    [
+      '-c',
+      'import json, rlm as rlm_mod; from rlm import rlm as rlm_ns; p1 = rlm_mod.html_render("<h1>Hello T3</h1>", title="Live RLM", height=360); p2 = rlm_ns.html_preview("<h2>Sub</h2>", title="Preview", height=240); print(json.dumps([p1, p2]))',
+    ],
     { encoding: 'utf8' }
   );
-  const parsed = JSON.parse(out.trim());
+  const [parsed, preview] = JSON.parse(out.trim());
   assert.equal(parsed.mimeType, 'application/vnd.prime-agent.html-render+json');
   assert.equal(parsed.title, 'Live RLM');
   assert.equal(parsed.height, 360);
+  assert.equal(parsed.uri, 'xd://127.0.0.1/html_render');
   assert.equal(parsed.data.html, '<h1>Hello T3</h1>');
+  assert.equal(preview.title, 'Preview');
+  assert.equal(preview.height, 240);
 });
 
 await (async () => {
@@ -238,7 +256,9 @@ await (async () => {
           if (msg.type === 'response' && msg.id) {
             responses.set(msg.id, msg);
           }
-        } catch {}
+        } catch (_parseErr) {
+          continue;
+        }
       }
     });
     const send = (id, payload) => child.stdin.write(JSON.stringify({ id, ...payload }) + '\n');

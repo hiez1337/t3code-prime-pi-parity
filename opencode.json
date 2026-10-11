@@ -2,10 +2,10 @@
   "$schema": "https://opencode.ai/config.json",
   "compaction": {
     "auto": true,
-    "prune": true,
-    "reserved": 40000,
-    "preserve_recent_tokens": 80000,
-    "tail_turns": 8
+    "keep": {
+      "tokens": 16000
+    },
+    "buffer": 35000
   },
   "provider": {
     "cpa-gui": {

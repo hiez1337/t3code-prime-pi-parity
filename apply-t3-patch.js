@@ -1,10 +1,30 @@
 'use strict';
 
-const asar = require('C:/Users/Ak417ytrfg/AppData/Local/npm-cache/_npx/8b3f11f22d4db0c9/node_modules/asar');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const cp = require('child_process');
+
+function loadAsarModule() {
+  const candidates = ['asar', '@electron/asar'];
+  const npxDir = path.join(os.homedir(), 'AppData', 'Local', 'npm-cache', '_npx');
+  if (fs.existsSync(npxDir)) {
+    for (const entry of fs.readdirSync(npxDir)) {
+      const p = path.join(npxDir, entry, 'node_modules', 'asar');
+      if (fs.existsSync(p)) candidates.push(p);
+    }
+  }
+  for (const modPath of candidates) {
+    try {
+      return require(modPath);
+    } catch (_err) {
+      // try next candidate
+    }
+  }
+  throw new Error('Could not locate asar module. Run `npx asar --version` once to populate cache.');
+}
+
+const asar = loadAsarModule();
 const {
   BRIDGE_MARKER,
   BIN_CLI_BRIDGE_SOURCE,
@@ -22,6 +42,7 @@ const inspectDir = 'C:/Users/Ak417ytrfg/AppData/Local/Temp/opencode/t3-inspect';
 const t3SettingsPath = path.join(os.homedir(), '.t3', 'userdata', 'settings.json');
 const rlmSourceInit = path.join(os.homedir(), '.local', 'share', 'prime-agent', 'prime-agent-runtime', 'src', 'rlm', '__init__.py');
 const rlmVenvInit = path.join(os.homedir(), '.prime', 'agent', 'kernel-venv', 'Lib', 'site-packages', 'rlm', '__init__.py');
+const kernelPython = path.join(os.homedir(), '.prime', 'agent', 'kernel-venv', 'Scripts', 'python.exe');
 
 function replaceFunctionBlock(content, prefix, newBlock) {
   const startIdx = content.indexOf(prefix);
@@ -70,16 +91,22 @@ function replaceFunctionBlock(content, prefix, newBlock) {
 function patchBinCliContent(content) {
   let changes = 0;
 
-  // 1. Inject self-contained bridge helper block once before buildPiRpcLaunch
+  // 1. Inject self-contained bridge helper block once before resolveSpawnCommand (early in bundle)
   if (!content.includes(BRIDGE_MARKER)) {
-    const anchor = 'function buildPiRpcLaunch(input) {';
+    const anchor = 'const resolveSpawnCommand = fnUntraced(';
     if (content.includes(anchor)) {
       content = content.replace(anchor, `${BIN_CLI_BRIDGE_SOURCE}\n${anchor}`);
       changes++;
     }
   }
 
-  // 2. Patch validateLocalExecutable to allow prime-agent.cmd / pa.cmd shims on Windows
+  // 2. Patch resolveSpawnCommand, validateLocalExecutable, inspect, and resolve for Windows prime-agent.cmd / pa.cmd shims
+  const oldSpawnExplicit = '\tconst explicitPath = command.includes("/") || command.includes("\\\\");';
+  const newSpawnExplicit = '\tcommand = resolvePrimeCmdShim(command);\n\tconst explicitPath = command.includes("/") || command.includes("\\\\");';
+  if (content.includes(oldSpawnExplicit) && !content.includes('command = resolvePrimeCmdShim(command);')) {
+    content = content.replace(oldSpawnExplicit, newSpawnExplicit);
+    changes++;
+  }
   const oldValidateExec = 'const validateLocalExecutable = (command) => platform === "win32" && /\\.(?:cmd|bat)$/iu.test(command) ? fail$1(';
   const newValidateExec = 'const validateLocalExecutable = (command) => platform === "win32" && /\\.(?:cmd|bat)$/iu.test(command) && !isPrimeAgentBinary(command) ? fail$1(';
   if (content.includes(oldValidateExec)) {
@@ -92,33 +119,60 @@ function patchBinCliContent(content) {
     content = content.replace(oldInspectCmd, newInspectCmd);
     changes++;
   }
+  const oldResolveExec = 'const executable = settings.commandPath.trim();\n\t\t\tif (!executable) return yield* new AcpRegistryError({\n\t\t\t\treason: "agent_not_configured",\n\t\t\t\tdetail: "Local ACP provider requires an executable."\n\t\t\t});\n\t\t\tconst env = environment ?? hostEnvironment;\n\t\t\tconst command = resolveExecutable(executable, platform, env);';
+  const newResolveExec = 'const executable = resolvePrimeCmdShim(settings.commandPath.trim());\n\t\t\tif (!executable) return yield* new AcpRegistryError({\n\t\t\t\treason: "agent_not_configured",\n\t\t\t\tdetail: "Local ACP provider requires an executable."\n\t\t\t});\n\t\t\tconst env = environment ?? hostEnvironment;\n\t\t\tconst rawCommand = resolveExecutable(executable, platform, env);\n\t\t\tconst command = rawCommand === void 0 ? void 0 : resolvePrimeCmdShim(rawCommand);';
+  if (content.includes(oldResolveExec)) {
+    content = content.replace(oldResolveExec, newResolveExec);
+    changes++;
+  }
 
-  // 3. Patch buildPiRpcLaunch + callers to filter unsupported flags for prime-agent
+  // 3. Patch PI_T3_MCP_EXTENSION_SOURCE directTools & xd://127.0.0.1 fallback URI
+  const oldDirectTools = 'const directTools = new Set(["orchestrator_capabilities", "delegate_task", "task_status"]);';
+  const newDirectTools = 'const directTools = new Set(["orchestrator_capabilities", "delegate_task", "task_status", "html_render", "html_preview"]);';
+  if (content.includes(oldDirectTools)) {
+    content = content.replace(oldDirectTools, newDirectTools);
+    changes++;
+  }
+  const oldExtDetails = 'details: { server: "t3-code", tool: name },';
+  const newExtDetails = 'details: { server: "t3-code", tool: name, uri: "xd://127.0.0.1/" + name },';
+  if (content.includes(oldExtDetails)) {
+    content = content.replace(oldExtDetails, newExtDetails);
+    changes++;
+  }
+
+  // 4. Patch buildPiRpcLaunch + callers to filter unsupported flags for prime-agent
   const oldLaunchReturn = 'return {\n\t\targs,';
   const newLaunchReturn = 'const finalArgs = filterPrimeAgentLaunchArgs(args, isPrimeAgentBinary(input.binaryPath));\n\treturn {\n\t\targs: finalArgs,';
   if (content.includes(oldLaunchReturn) && !content.includes('filterPrimeAgentLaunchArgs(args,')) {
     content = content.replace(oldLaunchReturn, newLaunchReturn);
     changes++;
   }
+  const prevContentBeforeLaunch = content;
   content = content.replace(
-    /buildPiRpcLaunch\(\{\s*launchArgs: resolvedLaunchArgs\.args,\s*environment: options\.environment,/g,
-    'buildPiRpcLaunch({\n\t\t\t\tbinaryPath: options.settings.binaryPath,\n\t\t\t\tlaunchArgs: resolvedLaunchArgs.args,\n\t\t\t\tenvironment: options.environment,'
+    /buildPiRpcLaunch\(\{\n(\t+)launchArgs: resolvedLaunchArgs\.args,\n\1environment: options\.environment,/g,
+    'buildPiRpcLaunch({\n$1binaryPath: options.settings.binaryPath,\n$1launchArgs: resolvedLaunchArgs.args,\n$1environment: options.environment,'
   );
   content = content.replace(
-    /buildPiRpcLaunch\(\{\s*launchArgs,\s*environment,\s*mcpSession: void 0,/g,
-    'buildPiRpcLaunch({\n\t\tbinaryPath: piSettings.binaryPath,\n\t\tlaunchArgs,\n\t\tenvironment,\n\t\tmcpSession: void 0,'
+    /buildPiRpcLaunch\(\{\n(\t+)launchArgs,\n\1environment,\n\1mcpSession: void 0,/g,
+    'buildPiRpcLaunch({\n$1binaryPath: piSettings.binaryPath,\n$1launchArgs,\n$1environment,\n$1mcpSession: void 0,'
   );
   content = content.replace(
-    /buildPiRpcLaunch\(\{\s*launchArgs: resolvedLaunchArgs\.args,\s*environment,\s*mcpSession: void 0,/g,
-    'buildPiRpcLaunch({\n\t\t\t\tbinaryPath: piSettings.binaryPath,\n\t\t\t\tlaunchArgs: resolvedLaunchArgs.args,\n\t\t\t\tenvironment,\n\t\t\t\tmcpSession: void 0,'
+    /buildPiRpcLaunch\(\{\n(\t+)launchArgs: resolvedLaunchArgs\.args,\n\1environment,\n\1mcpSession: void 0,/g,
+    'buildPiRpcLaunch({\n$1binaryPath: piSettings.binaryPath,\n$1launchArgs: resolvedLaunchArgs.args,\n$1environment,\n$1mcpSession: void 0,'
   );
+  if (content !== prevContentBeforeLaunch) changes++;
 
   // 4. Patch PiProviderCapabilitiesV2 & PI_PRESENTATION
+  const piCapsAnchor = 'const PiProviderCapabilitiesV2 = {';
   const oldPlanningCaps = 'planning: {\n\t\temitsPlanUpdated: false,\n\t\temitsTodoList: false,\n\t\temitsProposedPlan: false,\n\t\tsupportsStructuredQuestions: true,\n\t\tplanDeltasHaveItemIds: false\n\t},';
   const newPlanningCaps = 'supportsSkillInvocation: true,\n\tsupportsPlanMode: true,\n\tsupportsSessionFork: true,\n\tsupportsUsageReporting: true,\n\tsupportsImageAttachments: true,\n\tplanning: {\n\t\temitsPlanUpdated: true,\n\t\temitsTodoList: true,\n\t\temitsProposedPlan: true,\n\t\tsupportsStructuredQuestions: true,\n\t\tplanDeltasHaveItemIds: true\n\t},';
-  if (content.includes(oldPlanningCaps)) {
-    content = content.replace(oldPlanningCaps, newPlanningCaps);
-    changes++;
+  const piCapsIdx = content.indexOf(piCapsAnchor);
+  if (piCapsIdx !== -1 && !content.includes('supportsSkillInvocation: true,')) {
+    const tail = content.slice(piCapsIdx);
+    if (tail.includes(oldPlanningCaps)) {
+      content = content.slice(0, piCapsIdx) + tail.replace(oldPlanningCaps, newPlanningCaps);
+      changes++;
+    }
   }
   const oldPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: false,';
   const newPiPres = 'const PI_PRESENTATION = {\n\tdisplayName: "Pi",\n\tshowInteractionModeToggle: true,';
@@ -136,7 +190,7 @@ function patchBinCliContent(content) {
   }
 
   // 6. Replace emitToolItem and emitSubagentTasks
-  if (!content.includes('unpackPrimeIpythonCell(toolCallId,')) {
+  if (!content.includes('turn.toolNames = turn.toolNames ?? new Map()')) {
     const resTool = replaceFunctionBlock(content, 'const emitToolItem = fnUntraced(', EMIT_TOOL_ITEM_SOURCE);
     if (resTool.replaced) {
       content = resTool.content;
@@ -151,11 +205,23 @@ function patchBinCliContent(content) {
     }
   }
 
-  // 7. Patch handleSessionEvent for Prime Agent RPC events (agent_end, goal_update, rlm_child_update) and pendingWake
+  // 7. Patch handleSessionEvent, makePiTextGeneration, and startTurn wake replay for Prime Agent RPC events (agent_end, goal_update, rlm_child_update)
+  const oldTextGenSettled = 'while (true) if ((yield* take$2(connection.events))["type"] === "agent_settled") return;';
+  const newTextGenSettled = 'while (true) { const _evType = (yield* take$2(connection.events))["type"]; if (_evType === "agent_settled" || _evType === "agent_end") return; }';
+  if (content.includes(oldTextGenSettled)) {
+    content = content.replace(oldTextGenSettled, newTextGenSettled);
+    changes++;
+  }
   const oldPendingWakeSettled = 'if (event["type"] === "agent_settled") yield* updateProviderSession("ready", null);';
   const newPendingWakeSettled = 'if (event["type"] === "agent_settled" || event["type"] === "agent_end") yield* updateProviderSession("ready", null);';
   if (content.includes(oldPendingWakeSettled)) {
     content = content.replace(oldPendingWakeSettled, newPendingWakeSettled);
+    changes++;
+  }
+  const oldWakeReplaySettled = 'if (!continuation && event["type"] === "agent_settled") {';
+  const newWakeReplaySettled = 'if (!continuation && (event["type"] === "agent_settled" || event["type"] === "agent_end")) {';
+  if (content.includes(oldWakeReplaySettled)) {
+    content = content.replace(oldWakeReplaySettled, newWakeReplaySettled);
     changes++;
   }
   if (!content.includes('case "rlm_child_update":')) {
@@ -174,17 +240,35 @@ function patchBinCliContent(content) {
     changes++;
   }
 
-  // 9. Patch listSessionEntries to fall back to get_fork_messages for Prime Agent RPC
+  // 9. Patch listSessionEntries, registerThread, and rollbackThread to fall back to get_fork_messages for Prime Agent RPC
   const listEntriesAnchor = 'const listSessionEntries = (since, timeoutMs) =>';
   if (content.includes(listEntriesAnchor) && !content.includes('get_fork_messages')) {
     const listEntriesRe = /const listSessionEntries = \(since, timeoutMs\) => request\(\{[\s\S]*?\}\), orElseSucceed\(\(\) => null\)\);/;
     if (listEntriesRe.test(content)) {
       content = content.replace(
         listEntriesRe,
-        `const listSessionEntries = (since, timeoutMs) => gen$1(function* () {\n\t\t\t\tconst primary = yield* request({\n\t\t\t\t\ttype: "get_entries",\n\t\t\t\t\t...since === null ? {} : { since }\n\t\t\t\t}, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst leafId = piRecordField(data, "leafId");\n\t\t\t\t\tconst entries = piSessionEntries(piRecordField(data, "entries"));\n\t\t\t\t\treturn entries !== null && (typeof leafId === "string" || leafId === null) ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t\tif (primary !== null) return primary;\n\t\t\t\treturn yield* request({ type: "get_fork_messages" }, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst msgs = piRecordField(data, "messages");\n\t\t\t\t\tif (!Array.isArray(msgs)) return null;\n\t\t\t\t\tconst rawEntries = msgs.map((m, idx) => ({\n\t\t\t\t\t\tid: String(m?.entryId ?? \`fork-\${idx}\`),\n\t\t\t\t\t\tparentId: idx > 0 ? String(msgs[idx - 1]?.entryId ?? \`fork-\${idx - 1}\`) : null,\n\t\t\t\t\t\ttype: "message",\n\t\t\t\t\t\trole: "user"\n\t\t\t\t\t}));\n\t\t\t\t\tconst entries = piSessionEntries(rawEntries);\n\t\t\t\t\tconst leafId = rawEntries.length > 0 ? rawEntries[rawEntries.length - 1].id : null;\n\t\t\t\t\treturn entries !== null ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t});`
+        `const listSessionEntries = (since, timeoutMs) => gen$1(function* () {\n\t\t\t\tconst primary = yield* request({\n\t\t\t\t\ttype: "get_entries",\n\t\t\t\t\t...since === null ? {} : { since }\n\t\t\t\t}, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst leafId = piRecordField(data, "leafId");\n\t\t\t\t\tconst entries = piSessionEntries(piRecordField(data, "entries"));\n\t\t\t\t\treturn entries !== null && (typeof leafId === "string" || leafId === null) ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t\tif (primary !== null) return primary;\n\t\t\t\treturn yield* request({ type: "get_fork_messages" }, timeoutMs).pipe(map$11((data) => {\n\t\t\t\t\tconst msgs = piRecordField(data, "messages");\n\t\t\t\tif (!Array.isArray(msgs)) return null;\n\t\t\t\t\tconst rawEntries = msgs.map((m, idx) => ({\n\t\t\t\t\t\tid: String(m?.entryId ?? \`fork-\${idx}\`),\n\t\t\t\t\t\tparentId: idx > 0 ? String(msgs[idx - 1]?.entryId ?? \`fork-\${idx - 1}\`) : null,\n\t\t\t\t\t\ttype: "message",\n\t\t\t\t\t\tmessage: { role: "user" }\n\t\t\t\t\t}));\n\t\t\t\t\tconst entries = piSessionEntries(rawEntries);\n\t\t\t\t\tconst leafId = rawEntries.length > 0 ? rawEntries[rawEntries.length - 1].id : null;\n\t\t\t\t\treturn entries !== null ? { entries, leafId } : null;\n\t\t\t\t}), orElseSucceed(() => null));\n\t\t\t});`
       );
       changes++;
     }
+  }
+  const oldBaselineEntries = 'const baselineEntries = yield* request({ type: "get_entries" }).pipe(orElseSucceed(() => void 0));\n\t\t\t\tlastKnownLeaf = piRecordString(baselineEntries, "leafId") ?? null;\n\t\t\t\tleafCursorStale = baselineEntries === void 0;';
+  const newBaselineEntries = 'const baselineEntries = yield* listSessionEntries(null, PI_REQUEST_TIMEOUT_MS);\n\t\t\t\tlastKnownLeaf = piRecordString(baselineEntries, "leafId") ?? null;\n\t\t\t\tleafCursorStale = baselineEntries === null;';
+  if (content.includes(oldBaselineEntries)) {
+    content = content.replace(oldBaselineEntries, newBaselineEntries);
+    changes++;
+  }
+  const oldRollbackEntries = 'const entriesData = yield* request({ type: "get_entries" }).pipe(orElseSucceed(() => void 0));';
+  const newRollbackEntries = 'const entriesData = yield* listSessionEntries(null, PI_REQUEST_TIMEOUT_MS);';
+  if (content.includes(oldRollbackEntries)) {
+    content = content.replace(oldRollbackEntries, newRollbackEntries);
+    changes = changes + 1;
+  }
+  const oldRollbackStale = 'leafCursorStale = entriesData === void 0;';
+  const newRollbackStale = 'leafCursorStale = entriesData == null;';
+  if (content.includes(oldRollbackStale)) {
+    content = content.replace(oldRollbackStale, newRollbackStale);
+    changes++;
   }
 
   // 10. Patch checkPiProviderStatus version check & auth label for Prime Agent
@@ -228,6 +312,7 @@ function patchClientAssets(clientAssetsDir) {
       if (clientRegex.test(c) && !c.includes('e.toolName!==`html_render`')) {
         c = c.replace(clientRegex, (_m, fnName) => `let _t=${fnName}(e.toolName);if(_t!==\`html_render\`&&e.toolName!==\`html_render\`&&!e.toolName.endsWith(\`__html_render\`))return;`);
         fs.writeFileSync(fullPath, c, 'utf8');
+        cp.execSync(`node --check "${fullPath}"`, { stdio: 'inherit' });
         patchedFiles++;
       }
     }
@@ -238,6 +323,7 @@ function patchClientAssets(clientAssetsDir) {
       if (c.includes(iconTarget) && !c.includes('M12 2L3 7v10l9 5')) {
         c = c.replace(iconTarget, iconReplacement);
         fs.writeFileSync(fullPath, c, 'utf8');
+        cp.execSync(`node --check "${fullPath}"`, { stdio: 'inherit' });
         patchedFiles++;
       }
     }
@@ -248,12 +334,18 @@ function patchClientAssets(clientAssetsDir) {
 function patchPythonRlmFile(pyPath) {
   if (!fs.existsSync(pyPath)) return false;
   let py = fs.readFileSync(pyPath, 'utf8');
-  if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) return false;
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__') && py.includes('setattr(_RLMNamespace, "html_render"')) return false;
+  if (py.includes('# __T3_PRIME_HTML_BRIDGE__')) {
+    py = py.slice(0, py.indexOf('# __T3_PRIME_HTML_BRIDGE__')).trimEnd();
+  }
   py = py.trimEnd() + '\n' + PYTHON_RLM_HTML_SOURCE;
-  if (py.includes('__all__ = [')) {
+  if (py.includes('__all__ = [') && !py.includes('"html_render",')) {
     py = py.replace('__all__ = [', '__all__ = [\n    "html_render",\n    "html_preview",');
   }
   fs.writeFileSync(pyPath, py, 'utf8');
+  if (fs.existsSync(kernelPython)) {
+    cp.execFileSync(kernelPython, ['-m', 'py_compile', pyPath], { stdio: 'inherit' });
+  }
   return true;
 }
 
@@ -304,6 +396,10 @@ async function runPatch() {
     for (const binCli of binCliFiles) {
       const p = path.join(distDir, binCli);
       const raw = fs.readFileSync(p, 'utf8');
+      if (!raw.includes(BRIDGE_MARKER)) {
+        fs.copyFileSync(originalAsar, backupAsar);
+        console.log('Refreshed unpatched backup at:', backupAsar);
+      }
       const { content, changes } = patchBinCliContent(raw);
       if (changes > 0) {
         fs.writeFileSync(p, content, 'utf8');
